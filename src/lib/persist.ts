@@ -11,7 +11,10 @@ export interface SavedState {
   templateId: string;
   inputs: Record<string, Record<string, string>>;
   toggles: Record<string, Toggles>;
-  scale: Scale;
+  /** Κλίμακα του 3D ανά σχήμα (id προτύπου ή «file:όνομα»)· όσα λείπουν είναι 1:1. */
+  viewerScales: Record<string, Scale>;
+  /** Κλίμακα του φύλλου όψεων ανά σχήμα. manual: την άλλαξε ο χρήστης, άρα μένει. */
+  sheetScales: Record<string, ShapeScale>;
   projection: ProjectionAngle;
   dimsMode: DimsMode;
   /** Σειρά των έτοιμων σχημάτων (ids) όπως την όρισε ο χρήστης με σύρσιμο. */
@@ -19,6 +22,14 @@ export interface SavedState {
   /** Ονόματα που έδωσε ο χρήστης στα έτοιμα σχήματα (id → όνομα). */
   templateNames: Record<string, string>;
 }
+
+export interface ShapeScale {
+  scale: Scale;
+  manual: boolean;
+}
+
+const isScale = (s: unknown): s is Scale =>
+  isRecord(s) && (s.kind === 'enlarge' || s.kind === 'reduce') && typeof s.n === 'number' && s.n >= SCALE_N_MIN && s.n <= SCALE_N_MAX;
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
@@ -46,9 +57,17 @@ export function loadState(): Partial<SavedState> {
       out.toggles[tid] = Object.fromEntries(Object.entries(vals).filter(([, v]) => typeof v === 'boolean')) as Toggles;
     }
   }
-  const s = raw.scale;
-  if (isRecord(s) && (s.kind === 'enlarge' || s.kind === 'reduce') && typeof s.n === 'number' && s.n >= SCALE_N_MIN && s.n <= SCALE_N_MAX)
-    out.scale = { kind: s.kind, n: s.n };
+  if (isRecord(raw.viewerScales)) {
+    out.viewerScales = {};
+    for (const [key, v] of Object.entries(raw.viewerScales)) if (isScale(v)) out.viewerScales[key] = { kind: v.kind, n: v.n };
+  }
+  if (isRecord(raw.sheetScales)) {
+    out.sheetScales = {};
+    for (const [key, v] of Object.entries(raw.sheetScales)) {
+      if (isRecord(v) && isScale(v.scale) && typeof v.manual === 'boolean')
+        out.sheetScales[key] = { scale: { kind: v.scale.kind, n: v.scale.n }, manual: v.manual };
+    }
+  }
   if (raw.projection === 'first' || raw.projection === 'third') out.projection = raw.projection;
   if (raw.dimsMode === 'all' || raw.dimsMode === 'overall' || raw.dimsMode === 'none') out.dimsMode = raw.dimsMode;
   if (Array.isArray(raw.templateOrder)) out.templateOrder = raw.templateOrder.filter((x): x is string => typeof x === 'string');

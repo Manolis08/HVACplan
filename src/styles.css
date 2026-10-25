@@ -1186,3 +1186,132 @@ select:focus-visible {
   margin: 0;
   font-size: 0.75rem;
 }
+
+/* ---------- Κινήσεις ---------- */
+:root {
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 160ms;
+  --dur: 280ms;
+}
+
+/* Ομαλή αλλαγή χρωμάτων, περιγραμμάτων και σκιών σε όλα τα στοιχεία που πατιούνται. */
+button,
+select,
+input,
+textarea,
+.template-card,
+.toggle {
+  transition:
+    background-color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    color var(--dur-fast) ease,
+    box-shadow var(--dur-fast) ease,
+    opacity var(--dur-fast) ease,
+    transform var(--dur-fast) var(--ease-out);
+}
+
+/* Μικρό «πάτημα» στα κουμπιά. */
+button:not(:disabled):not(.drag-handle):active {
+  transform: scale(0.96);
+}
+
+.view-button:hover,
+.secondary-button:hover,
+.primary-button:not(:disabled):hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+/* Αλλαγή θέματος (φωτεινό/σκοτεινό) χωρίς απότομο τρεμόπαιγμα. */
+body,
+.app-header,
+.card,
+.side-pane,
+.view-toolbar,
+.viewer,
+.sheet-pane {
+  transition:
+    background-color var(--dur) ease,
+    border-color var(--dur) ease,
+    color var(--dur) ease;
+}
+
+/* 3D ↔ Φύλλο όψεων: ήπια εμφάνιση με μικρή ολίσθηση. */
+@keyframes pane-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.viewer:not([hidden]),
+.sheet-pane {
+  animation: pane-in var(--dur) var(--ease-out) both;
+}
+
+.sheet-page {
+  animation: pane-in 360ms var(--ease-out) 60ms both;
+}
+
+.view-toolbar,
+.color-legend,
+.info-banner,
+.stale-banner,
+.warning {
+  animation: fade-in var(--dur) var(--ease-out) both;
+}
+
+/* Όσοι έχουν ζητήσει λιγότερη κίνηση στη συσκευή τους. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 1ms !important;
+  }
+}
+
+/* Δείκτης που γλιστράει κάτω από την ενεργή καρτέλα 3D / Φύλλο όψεων. */
+.pane-switch {
+  position: relative;
+  isolation: isolate;
+  background: var(--input-bg);
+}
+
+.pane-switch::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 50%;
+  background: var(--accent);
+  z-index: -1;
+  transition: transform var(--dur) var(--ease-out);
+}
+
+.pane-switch[data-pane='sheet']::before {
+  transform: translateX(100%);
+}
+
+.pane-switch button {
+  background: transparent;
+}
+
+.pane-switch button[aria-selected='true'] {
+  color: #fff;
+  font-weight: 600;
+}

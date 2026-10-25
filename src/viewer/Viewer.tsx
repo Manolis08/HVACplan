@@ -9,6 +9,7 @@ import {
   DirectionalLight,
   DoubleSide,
   GreaterDepth,
+  MeshStandardMaterial,
   Object3D,
   OrthographicCamera,
   Vector3,
@@ -59,6 +60,13 @@ function fitMargin(width: number, height: number, mode: DimsMode) {
 
 /** Χρώματα όψεων: κάτοψη (+Z) πράσινο, πρόσοψη (−Y) κόκκινο, πλάγια (−X) μπλε, υπόλοιπα κίτρινο. */
 export const FACE_COLORS = { top: '#00aa00', front: '#ff0000', side: '#0000ff', other: '#ffff00' } as const;
+
+/** Ουδέτερο χρώμα του μοντέλου όταν τα χρώματα όψεων είναι κλειστά. */
+const PLAIN_COLOR = '#c7d3e0';
+
+function reducedMotion() {
+  return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
 
 export function faceColorKey(nx: number, ny: number, nz: number): keyof typeof FACE_COLORS {
   if (nz > 0.5) return 'top';
@@ -119,21 +127,49 @@ function PartMesh({ part, showHidden, colorMode }: { part: Part; showHidden: boo
     },
     [geometry, edges, box],
   );
+  // Ομαλή μετάβαση στα χρώματα όψεων: το χρώμα κάθε έδρας ανακατεύεται από το ουδέτερο
+  // στο χρώμα όψης με έναν συντελεστή (0 → 1) που κινείται λίγο σε κάθε καρέ.
+  const colorMix = useRef({ value: colorMode ? 1 : 0 });
+  const material = useMemo(() => {
+    const m = new MeshStandardMaterial({
+      vertexColors: true,
+      roughness: 0.85,
+      metalness: 0,
+      side: DoubleSide,
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1,
+    });
+    m.onBeforeCompile = (shader) => {
+      shader.uniforms.uColorMix = colorMix.current;
+      shader.uniforms.uPlain = { value: new Color(PLAIN_COLOR) };
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nuniform float uColorMix;\nuniform vec3 uPlain;')
+        .replace('#include <color_fragment>', 'diffuseColor.rgb = mix(uPlain, vColor.rgb, uColorMix);');
+    };
+    return m;
+  }, []);
+  useEffect(() => () => material.dispose(), [material]);
+  const invalidate = useThree((s) => s.invalidate);
+  useEffect(() => invalidate(), [colorMode, invalidate]);
+  useFrame((_, delta) => {
+    const mix = colorMix.current;
+    const target = colorMode ? 1 : 0;
+    if (mix.value === target) return;
+    if (reducedMotion()) {
+      mix.value = target;
+    } else {
+      // εκθετική εξομάλυνση (~0,4 s για να φτάσει σχεδόν στο τέλος). Το βήμα χρόνου περιορίζεται,
+      // γιατί με απόδοση «κατ' απαίτηση» το πρώτο καρέ μετά από αδράνεια έχει τεράστιο delta.
+      const dt = Math.min(delta, 1 / 30);
+      mix.value += (target - mix.value) * (1 - Math.exp(-dt * 10));
+      if (Math.abs(target - mix.value) < 0.004) mix.value = target;
+    }
+    invalidate();
+  });
   return (
     <group>
-      <mesh geometry={geometry}>
-        <meshStandardMaterial
-          key={colorMode ? 'colors' : 'plain'}
-          vertexColors={colorMode}
-          color={colorMode ? '#ffffff' : '#c7d3e0'}
-          roughness={0.85}
-          metalness={0}
-          side={DoubleSide}
-          polygonOffset
-          polygonOffsetFactor={1}
-          polygonOffsetUnits={1}
-        />
-      </mesh>
+      <mesh geometry={geometry} material={material} />
       <primitive object={edges} />
       {showHidden && <HiddenEdges edges={part.edges} />}
       {box && (

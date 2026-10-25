@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { edgeTopology } from '../drawing/hlr';
-import { computeSheetViews, sheetSvg, type TitleFields } from '../drawing/sheet';
+import { computeSheetViews, sheetSvg, suggestedScale, type TitleFields } from '../drawing/sheet';
 import type { Scale } from '../lib/scale';
 import type { Part } from '../model/types';
 import type { ProjectionAngle } from './ProjectionSymbol';
@@ -63,10 +63,12 @@ interface Props {
   fileName: string;
   /** Κλίμακα σχεδίου: μέγεθος των όψεων στο χαρτί· οι αριθμοί μένουν πραγματικοί. */
   scale: Scale;
+  /** Καλείται με την προτεινόμενη κλίμακα (μεγαλύτερη που χωρά στο A3) όταν ανοίγει το φύλλο. */
+  onSuggestedScale?: (s: Scale) => void;
   title: string;
 }
 
-export function SheetView({ part, blockedReason, projection, openMesh, fileName, scale, title }: Props) {
+export function SheetView({ part, blockedReason, projection, openMesh, fileName, scale, onSuggestedScale, title }: Props) {
   const [projectionLines, setProjectionLines] = useState(true);
   const [showDims, setShowDims] = useState(true);
   const [layout, setLayout] = useState<'quadrants' | 'standard'>('quadrants');
@@ -83,6 +85,9 @@ export function SheetView({ part, blockedReason, projection, openMesh, fileName,
       // χωρίς αποθήκευση
     }
   }, [saved]);
+  useEffect(() => {
+    if (part && onSuggestedScale) onSuggestedScale(suggestedScale(part, projection, layout));
+  }, [part, projection, layout, onSuggestedScale]);
   const fields: TitleFields = { title: titleOverride || title, date, ...saved };
   const triangles = part ? part.triangles.length / 9 : 0;
   const tooBig = triangles > MAX_SHEET_TRIANGLES;

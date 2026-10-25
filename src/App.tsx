@@ -3,8 +3,8 @@ import { configureDraco } from './io/draco';
 import { ModelError, technical } from './io/errors';
 import { fromBrowserFile, loadModel } from './io/loadModel';
 import { buildFilePart, IDENTITY, prepareModel } from './io/meshTools';
-import { DEFAULT_SCALE, loadState, saveState } from './lib/persist';
-import { scaleHint, scaleLabel, type Scale } from './lib/scale';
+import { DEFAULT_SCALE, loadState, saveState, type ShapeScale } from './lib/persist';
+import { sameScale, scaleHint, scaleLabel, type Scale } from './lib/scale';
 import { applyTheme, initialTheme, type Theme } from './lib/theme';
 import { defaultInputs, defaultToggles, evaluate } from './model/evaluate';
 import { TEMPLATES, templateById } from './model/templates';
@@ -40,7 +40,10 @@ export default function App() {
   const [templateId, setTemplateId] = useState(saved.templateId ?? TEMPLATES[0].id);
   const [inputs, setInputs] = useState<Record<string, Record<string, string>>>(initialInputs);
   const [toggles, setToggles] = useState<Record<string, Toggles>>(initialToggles);
-  const [scale, setScale] = useState<Scale>(saved.scale ?? DEFAULT_SCALE);
+  // Κλίμακα ανά σχήμα, χωριστά για το 3D και για το φύλλο όψεων.
+  // 3D: 1:1 μέχρι να την αλλάξει ο χρήστης. Φύλλο: προτεινόμενη μέχρι να την αλλάξει ο χρήστης.
+  const [viewerScales, setViewerScales] = useState<Record<string, Scale>>(saved.viewerScales ?? {});
+  const [sheetScales, setSheetScales] = useState<Record<string, ShapeScale>>(saved.sheetScales ?? {});
   const [projection, setProjection] = useState<ProjectionAngle>(saved.projection ?? 'first');
   const [dimsMode, setDimsMode] = useState<DimsMode>(saved.dimsMode ?? 'all');
   // Σειρά και ονόματα των έτοιμων σχημάτων, όπως τα όρισε ο χρήστης (αποθηκεύονται στη συσκευή).
@@ -159,6 +162,26 @@ export default function App() {
   const stale = !evaluation.part;
 
   const fileMode = mode === 'file';
+  const shapeKey = fileMode ? `file:${file?.raw.name ?? ''}` : template.id;
+  const viewerScale = viewerScales[shapeKey] ?? DEFAULT_SCALE;
+  const sheetScale = sheetScales[shapeKey]?.scale ?? DEFAULT_SCALE;
+  // Ο επιλογέας κλίμακας αλλάζει μόνο την προβολή που είναι ανοιχτή.
+  const scale = pane === 'sheet' ? sheetScale : viewerScale;
+  const setScale = (s: Scale) =>
+    pane === 'sheet'
+      ? setSheetScales((prev) => ({ ...prev, [shapeKey]: { scale: s, manual: true } }))
+      : setViewerScales((prev) => ({ ...prev, [shapeKey]: s }));
+  // Το φύλλο όψεων στέλνει την προτεινόμενη κλίμακα όταν ανοίγει (και όταν αλλάζει το σχήμα του).
+  // Ισχύει μόνο αν ο χρήστης δεν έχει διαλέξει ήδη κλίμακα για αυτό το σχήμα.
+  const applySuggestedScale = useCallback(
+    (s: Scale) =>
+      setSheetScales((prev) => {
+        const cur = prev[shapeKey];
+        if (cur && (cur.manual || sameScale(cur.scale, s))) return prev;
+        return { ...prev, [shapeKey]: { scale: s, manual: false } };
+      }),
+    [shapeKey],
+  );
   const viewerPart = fileMode && filePart ? filePart : shownPart;
   const effectiveDims: DimsMode = fileMode && (!file || !fileOptions.confirmed) ? 'none' : dimsMode;
   const openMesh = fileMode && !!file && (file.prepared.stats.boundaryEdges > 0 || file.prepared.stats.nonManifoldEdges > 0);
@@ -172,15 +195,15 @@ export default function App() {
     : undefined;
 
   useEffect(() => {
-    saveState({ templateId, inputs, toggles, scale, projection, dimsMode, templateOrder, templateNames });
-  }, [templateId, inputs, toggles, scale, projection, dimsMode, templateOrder, templateNames]);
+    saveState({ templateId, inputs, toggles, viewerScales, sheetScales, projection, dimsMode, templateOrder, templateNames });
+  }, [templateId, inputs, toggles, viewerScales, sheetScales, projection, dimsMode, templateOrder, templateNames]);
 
   // Βοήθεια για αυτόματους ελέγχους στον browser (μόνο σε ανάπτυξη).
   useEffect(() => {
     if (import.meta.env.DEV) {
-      (window as unknown as Record<string, unknown>).__opseis = { part: viewerPart, scale, view, fileOptions };
+      (window as unknown as Record<string, unknown>).__opseis = { part: viewerPart, scale: viewerScale, view, fileOptions };
     }
-  }, [viewerPart, scale, view, fileOptions]);
+  }, [viewerPart, viewerScale, view, fileOptions]);
 
   return (
     <div className="app">
@@ -201,7 +224,7 @@ export default function App() {
 
       <main className={`app-main${pane === 'sheet' ? ' sheet-mode' : ''}`}>
         <section className="viewer-pane" aria-label="Προβολή">
-          <div className="segmented pane-switch" role="tablist" aria-label="Προβολή">
+          <div className="segmented pane-switch" role="tablist" aria-label="Προβολή" data-pane={pane}>
             <button type="button" role="tab" aria-selected={pane === '3d'} onClick={() => setPane('3d')}>
               3D
             </button>
@@ -216,7 +239,8 @@ export default function App() {
               projection={projection}
               openMesh={openMesh}
               fileName={(fileMode && file ? file.raw.name.replace(/\.[^.]+$/, '') : template.id) || 'sxedio'}
-              scale={scale}
+              scale={sheetScale}
+              onSuggestedScale={applySuggestedScale}
               title={fileMode && file ? file.raw.name.replace(/\.[^.]+$/, '') : nameOf(template)}
             />
           )}
@@ -224,7 +248,7 @@ export default function App() {
             <Viewer
               ref={viewerRef}
               part={viewerPart}
-              scale={scale}
+              scale={viewerScale}
               dimsMode={effectiveDims}
               showHidden={showHidden}
               colorMode={colorMode}
@@ -235,8 +259,8 @@ export default function App() {
               Όψη: <strong>{viewLabel(view)}</strong>
             </div>
             <div className="chip chip-scale">
-              Κλίμακα <strong>{scaleLabel(scale)}</strong>
-              {scale.n !== 1 && <span className="chip-sub">{scaleHint(scale)}</span>}
+              Κλίμακα <strong>{scaleLabel(viewerScale)}</strong>
+              {viewerScale.n !== 1 && <span className="chip-sub">{scaleHint(viewerScale)}</span>}
             </div>
             {!fileMode && stale && (
               <div className="stale-banner" role="status">
@@ -328,7 +352,7 @@ export default function App() {
           </section>
 
           <section className="card">
-            <h2>Κλίμακα</h2>
+            <h2>Κλίμακα {pane === 'sheet' ? 'φύλλου όψεων' : '3D'}</h2>
             <ScaleSelector value={scale} onChange={setScale} />
           </section>
 

@@ -219,20 +219,25 @@ export function assignDims(dims: DimSpec[], views: SheetView[]): Map<SheetView, 
 }
 
 /** Ολόκληρο το SVG του φύλλου (A3 κάθετο), σε πραγματική κλίμακα. Κρυφές γραμμές: stroke-dasharray. */
-export function sheetSvg(views: SheetView[], part: Part, o: SheetOptions): SheetResult {
-  const [front, top, side] = ['front', 'top', 'side'].map((r) => views.find((v) => v.role === r)!);
-  const wf = front.maxU - front.minU;
-  const hf = front.maxV - front.minV;
-  const ht = top.maxV - top.minV;
-  const ws = side.maxU - side.minU;
+type Box = { x: number; y: number };
+interface Layout {
+  fits: (k: number) => boolean;
+  place: (k: number) => { frontBox: Box; topBox: Box; sideBox: Box; tb: Box };
+}
 
-  const first = o.projection === 'first';
-  const quad = o.layout !== 'standard';
-  type Box = { x: number; y: number };
-  interface Layout {
-    fits: (k: number) => boolean;
-    place: (k: number) => { frontBox: Box; topBox: Box; sideBox: Box; tb: Box };
-  }
+/** Πλάτος/ύψος των όψεων σε mm αντικειμένου: πρόσοψη (wf × hf), ύψος κάτοψης ht, πλάτος πλάγιας ws. */
+interface Extents {
+  wf: number;
+  hf: number;
+  ht: number;
+  ws: number;
+}
+
+/** Όλες οι κλίμακες που δοκιμάζονται, από τη μεγαλύτερη στη μικρότερη. */
+const ALL_SCALES: Scale[] = [...SCALE_PRESETS, ...[200, 250, 500, 1000, 2000, 5000].map((n): Scale => ({ kind: 'reduce', n }))];
+
+function makeLayout({ wf, hf, ht, ws }: Extents, projection: ProjectionAngle, mode: SheetOptions['layout']): Layout {
+  const first = projection === 'first';
 
   // Standard: όλες οι όψεις μαζί, κεντραρισμένες στην περιοχή πάνω από το υπόμνημα.
   const standard: Layout = (() => {
@@ -280,7 +285,33 @@ export function sheetSvg(views: SheetView[], part: Part, o: SheetOptions): Sheet
       },
     };
   })();
-  const layout = quad ? quadrants : standard;
+  return mode === 'standard' ? standard : quadrants;
+}
+
+/**
+ * Προτεινόμενη κλίμακα: η μεγαλύτερη τυποποιημένη με την οποία οι τρεις όψεις χωράνε στο A3
+ * (με τη διάταξη που έχει επιλεγεί). Χρειάζεται μόνο το κουτί του κομματιού, όχι τις γραμμές.
+ */
+export function suggestedScale(part: Part, projection: ProjectionAngle, mode: SheetOptions['layout']): Scale {
+  const corners = bboxCorners(part.bbox);
+  const span = (viewId: ViewId, axis: 'right' | 'up') => {
+    const a = viewBasis(viewById(viewId).dir)[axis];
+    const vals = corners.map((c) => c[0] * a.x + c[1] * a.y + c[2] * a.z);
+    return Math.max(...vals) - Math.min(...vals);
+  };
+  const side = sideViewFor(projection);
+  const layout = makeLayout({ wf: span('front', 'right'), hf: span('front', 'up'), ht: span('top', 'up'), ws: span(side, 'right') }, projection, mode);
+  return ALL_SCALES.find((sc) => layout.fits(applyScale(1, sc))) ?? ALL_SCALES[ALL_SCALES.length - 1];
+}
+
+export function sheetSvg(views: SheetView[], part: Part, o: SheetOptions): SheetResult {
+  const [front, top, side] = ['front', 'top', 'side'].map((r) => views.find((v) => v.role === r)!);
+  const wf = front.maxU - front.minU;
+  const hf = front.maxV - front.minV;
+  const ht = top.maxV - top.minV;
+  const first = o.projection === 'first';
+  const quad = o.layout !== 'standard';
+  const layout = makeLayout({ wf, hf, ht, ws: side.maxU - side.minU }, o.projection, o.layout);
 
   // Αν η επιλεγμένη κλίμακα δεν χωρά στο A3, σμικρύνουμε αυτόματα στη μεγαλύτερη τυποποιημένη που χωρά.
   const fits = (sc: Scale) => layout.fits(applyScale(1, sc));
@@ -288,9 +319,7 @@ export function sheetSvg(views: SheetView[], part: Part, o: SheetOptions): Sheet
   let used = o.scale;
   if (!fits(o.scale)) {
     const kRequested = applyScale(1, o.scale);
-    const smaller = [...SCALE_PRESETS, ...[200, 250, 500, 1000, 2000, 5000].map((n): Scale => ({ kind: 'reduce', n }))].filter(
-      (p) => applyScale(1, p) < kRequested,
-    );
+    const smaller = ALL_SCALES.filter((p) => applyScale(1, p) < kRequested);
     used = smaller.find(fits) ?? smaller[smaller.length - 1] ?? o.scale;
     warnings.push(
       `Σε κλίμακα ${scaleLabel(o.scale)} οι όψεις δεν χωράνε στο A3· σμικρύνθηκε σε ${scaleLabel(used)} για να χωρά.`,

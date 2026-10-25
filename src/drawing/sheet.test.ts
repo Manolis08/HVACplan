@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Scale } from '../lib/scale';
 import { defaultInputs, defaultToggles, evaluate } from '../model/evaluate';
 import { templateById } from '../model/templates';
-import { assignDims, computeSheetViews, sheetSvg } from './sheet';
+import { assignDims, computeSheetViews, sheetSvg, suggestedScale } from './sheet';
 
 const cube = (() => {
   const t = templateById('notched-cube');
@@ -142,5 +142,24 @@ describe('πλάγια όψη με διαστάσεις (Bug 5)', () => {
     expect(ids(side)).toEqual(['H', 'W']);
     expect(ids(front)).toEqual(['L', 'nt', 'nw']);
     expect(ids(top)).toEqual(['nd']);
+  });
+});
+
+describe('προτεινόμενη κλίμακα', () => {
+  it('κύβος 30×20×20 σε 2×2: η μεγαλύτερη που χωρά είναι 3:1', () => {
+    expect(suggestedScale(cube, 'first', 'quadrants')).toEqual({ kind: 'enlarge', n: 3 });
+  });
+
+  it('η προτεινόμενη χωρά χωρίς σμίκρυνση, η αμέσως μεγαλύτερη όχι', () => {
+    const s = suggestedScale(cube, 'first', 'quadrants');
+    expect(sheet(s).warnings).toEqual([]);
+    expect(sheet({ kind: 'enlarge', n: 5 }).warnings.length).toBe(1);
+  });
+
+  it('εξάρτημα 100×80: όχι μεγέθυνση', () => {
+    const t = templateById('bearing-block');
+    const part = evaluate(t, defaultInputs(t), defaultToggles(t)).part!;
+    const s = suggestedScale(part, 'first', 'quadrants');
+    expect(s.kind === 'reduce' || s.n === 1).toBe(true);
   });
 });
