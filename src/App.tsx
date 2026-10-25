@@ -86,6 +86,45 @@ export default function App() {
       document.removeEventListener('keydown', onKey);
     };
   }, [scaleOpen]);
+  // Πλήρης οθόνη της προβολής (3D ή φύλλο όψεων). Όπου ο browser δεν την υποστηρίζει για
+  // στοιχεία σελίδας (π.χ. iPhone), η προβολή απλώνεται σε όλο το παράθυρο με CSS.
+  const viewerPaneRef = useRef<HTMLElement>(null);
+  const [nativeFullscreen, setNativeFullscreen] = useState(false);
+  const [cssFullscreen, setCssFullscreen] = useState(false);
+  const fullscreen = nativeFullscreen || cssFullscreen;
+  useEffect(() => {
+    const onChange = () => {
+      const on = !!document.fullscreenElement && document.fullscreenElement === viewerPaneRef.current;
+      setNativeFullscreen(on);
+      if (on) setCssFullscreen(false);
+    };
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+  useEffect(() => {
+    if (!cssFullscreen) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setCssFullscreen(false);
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [cssFullscreen]);
+  const toggleFullscreen = () => {
+    if (cssFullscreen) return setCssFullscreen(false);
+    if (document.fullscreenElement) return void document.exitFullscreen().catch(() => {});
+    const el = viewerPaneRef.current;
+    if (!el?.requestFullscreen) return setCssFullscreen(true);
+    // Αν ο browser αρνηθεί ή δεν απαντήσει (π.χ. περιμένει άδεια), απλώνουμε με CSS.
+    let settled = false;
+    el.requestFullscreen().then(
+      () => (settled = true),
+      () => {
+        settled = true;
+        setCssFullscreen(true);
+      },
+    );
+    setTimeout(() => {
+      if (!settled && !document.fullscreenElement) setCssFullscreen(true);
+    }, 800);
+  };
   // Πεδία μέτρων του έτοιμου σχήματος: κρυμμένα μέχρι να τα ζητήσει ο χρήστης.
   const [paramsOpen, setParamsOpen] = useState(false);
 
@@ -248,7 +287,8 @@ export default function App() {
       </header>
 
       <main className={`app-main${pane === 'sheet' ? ' sheet-mode' : ''}`}>
-        <section className="viewer-pane" aria-label="Προβολή">
+        <section ref={viewerPaneRef} className={`viewer-pane${cssFullscreen ? ' css-fullscreen' : ''}`} aria-label="Προβολή">
+          <div className="pane-header">
           <div className="segmented pane-switch" role="tablist" aria-label="Προβολή" data-pane={pane}>
             <button type="button" role="tab" aria-selected={pane === '3d'} onClick={() => setPane('3d')}>
               3D
@@ -259,6 +299,23 @@ export default function App() {
               }}>
               Φύλλο όψεων
             </button>
+          </div>
+          <button
+            type="button"
+            className="secondary-button fullscreen-button"
+            aria-pressed={fullscreen}
+            onClick={toggleFullscreen}
+            title={fullscreen ? 'Έξοδος από πλήρη οθόνη (Esc)' : 'Πλήρης οθόνη'}
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              {fullscreen ? (
+                <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
+              ) : (
+                <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+              )}
+            </svg>
+            <span>{fullscreen ? 'Έξοδος' : 'Πλήρης οθόνη'}</span>
+          </button>
           </div>
           {pane === 'sheet' && (
             <SheetView
@@ -404,53 +461,55 @@ export default function App() {
             </section>
           )}
 
-          <section className="card">
-            <h2>Εμφάνιση στο 3D</h2>
-            <div className="toggle-buttons">
-              <button
-                type="button"
-                className={`secondary-button color-mode${showHidden ? ' on' : ''}`}
-                aria-pressed={showHidden}
-                onClick={() => setShowHidden((v) => !v)}
-              >
-                Διακεκομμένες γραμμές: {showHidden ? 'ON' : 'OFF'}
-              </button>
-              <button
-                type="button"
-                className={`secondary-button color-mode${colorMode ? ' on' : ''}`}
-                aria-pressed={colorMode}
-                onClick={() => setColorMode((c) => !c)}
-              >
-                Χρώματα όψεων: {colorMode ? 'ON' : 'OFF'}
-              </button>
-            </div>
-            {showHidden && edgeCount > 10000 && (
-              <p className="warning">Το μοντέλο έχει {edgeCount.toLocaleString('el-GR')} ακμές· η προβολή μπορεί να είναι πιο αργή.</p>
-            )}
-            {showHidden && openMesh && <p className="warning">Οι διακεκομμένες γραμμές ίσως δεν είναι ακριβείς για ανοιχτά πλέγματα.</p>}
-            {colorMode && (
-              <ul className="color-legend">
-                <li><i style={{ background: FACE_COLORS.top }} />Κάτοψη (πάνω)</li>
-                <li><i style={{ background: FACE_COLORS.front }} />Πρόσοψη (μπροστά)</li>
-                <li><i style={{ background: FACE_COLORS.side }} />Πλάγια (αριστερά)</li>
-                <li><i style={{ background: FACE_COLORS.other }} />Υπόλοιπες έδρες</li>
-              </ul>
-            )}
-            <p className="field-label">Ετικέτες διαστάσεων</p>
-            <div className="segmented" role="radiogroup" aria-label="Ετικέτες διαστάσεων">
-              {DIMS_MODES.map((m) => (
+          {pane === '3d' && (
+            <section className="card">
+              <h2>Εμφάνιση στο 3D</h2>
+              <div className="toggle-buttons">
                 <button
-                  key={m.id}
                   type="button"
-                  role="radio"
-                  aria-checked={dimsMode === m.id}
-                  onClick={() => setDimsMode(m.id)}
+                  className={`secondary-button color-mode${showHidden ? ' on' : ''}`}
+                  aria-pressed={showHidden}
+                  onClick={() => setShowHidden((v) => !v)}
                 >
-                  {m.label}
+                  Διακεκομμένες γραμμές: {showHidden ? 'ON' : 'OFF'}
                 </button>
-              ))}
-            </div>
-          </section>
+                <button
+                  type="button"
+                  className={`secondary-button color-mode${colorMode ? ' on' : ''}`}
+                  aria-pressed={colorMode}
+                  onClick={() => setColorMode((c) => !c)}
+                >
+                  Χρώματα όψεων: {colorMode ? 'ON' : 'OFF'}
+                </button>
+              </div>
+              {showHidden && edgeCount > 10000 && (
+                <p className="warning">Το μοντέλο έχει {edgeCount.toLocaleString('el-GR')} ακμές· η προβολή μπορεί να είναι πιο αργή.</p>
+              )}
+              {showHidden && openMesh && <p className="warning">Οι διακεκομμένες γραμμές ίσως δεν είναι ακριβείς για ανοιχτά πλέγματα.</p>}
+              {colorMode && (
+                <ul className="color-legend">
+                  <li><i style={{ background: FACE_COLORS.top }} />Κάτοψη (πάνω)</li>
+                  <li><i style={{ background: FACE_COLORS.front }} />Πρόσοψη (μπροστά)</li>
+                  <li><i style={{ background: FACE_COLORS.side }} />Πλάγια (αριστερά)</li>
+                  <li><i style={{ background: FACE_COLORS.other }} />Υπόλοιπες έδρες</li>
+                </ul>
+              )}
+              <p className="field-label">Ετικέτες διαστάσεων</p>
+              <div className="segmented" role="radiogroup" aria-label="Ετικέτες διαστάσεων">
+                {DIMS_MODES.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={dimsMode === m.id}
+                    onClick={() => setDimsMode(m.id)}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
         </aside>
       </main>
 

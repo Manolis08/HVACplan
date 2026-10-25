@@ -1560,3 +1560,60 @@ body,
   opacity: 0;
   transition: none;
 }
+
+/* ---------- Πλήρης οθόνη προβολής ---------- */
+.pane-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 8px;
+}
+
+.pane-header .pane-switch {
+  flex: 1 1 auto;
+  margin: 0;
+}
+
+.fullscreen-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+/* Σε πλήρη οθόνη η προβολή γεμίζει όλο τον χώρο και έχει το φόντο της εφαρμογής. */
+.viewer-pane:fullscreen {
+  width: 100%;
+  height: 100%;
+  background: var(--bg);
+}
+
+.viewer-pane.css-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  height: auto !important;
+  background: var(--bg);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.viewer-pane:fullscreen .sheet-pane,
+.viewer-pane.css-fullscreen .sheet-pane {
+  min-height: 0;
+}
+
+@media (max-width: 520px) {
+  .fullscreen-button span {
+    display: none;
+  }
+}
+
+/* Στην πλήρη οθόνη το φύλλο κυλάει μέσα στη δική του περιοχή (και στο κινητό). */
+.viewer-pane:fullscreen .sheet-scroll,
+.viewer-pane.css-fullscreen .sheet-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
