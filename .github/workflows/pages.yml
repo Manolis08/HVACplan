@@ -1,9 +1,8 @@
-# Αυτόματη δημοσίευση στο GitHub Pages: σε κάθε push στο main γίνεται build και ανέβασμα του dist/.
+# Δημοσίευση στο GitHub Pages: ΜΟΝΟ όταν την ξεκινάς χειροκίνητα (Actions → Run workflow).
+# Τα pushes στο main δεν δημοσιεύουν τίποτα.
 name: Δημοσίευση στο GitHub Pages
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
