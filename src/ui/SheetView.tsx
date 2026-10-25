@@ -105,13 +105,13 @@ export function SheetView({ part, blockedReason, projection, openMesh, fileName,
     setBusy(kind);
     try {
       if (kind === 'svg') {
-        saveFile(new Blob([`<?xml version="1.0" encoding="UTF-8"?>\n${svg}`], { type: 'image/svg+xml' }), `opseis-${fileName}.svg`);
+        saveFile(new Blob([`<?xml version="1.0" encoding="UTF-8"?>\n${svg}`], { type: 'image/svg+xml' }), `hvacplan-${fileName}.svg`);
       } else if (kind === 'pdf') {
         const [{ svgToPdf }, { loadPdfFonts }] = await Promise.all([import('../drawing/pdf'), import('../drawing/fonts')]);
         const bytes = svgToPdf(svg, await loadPdfFonts(), fields.title);
-        saveFile(new Blob([bytes as BlobPart], { type: 'application/pdf' }), `opseis-${fileName}.pdf`);
+        saveFile(new Blob([bytes as BlobPart], { type: 'application/pdf' }), `hvacplan-${fileName}.pdf`);
       } else {
-        saveFile(await svgToPng(svg), `opseis-${fileName}.png`);
+        saveFile(await svgToPng(svg), `hvacplan-${fileName}.png`);
       }
     } catch (e) {
       setExportError(`Η εξαγωγή ${kind.toUpperCase()} απέτυχε: ${e instanceof Error ? e.message : String(e)}`);

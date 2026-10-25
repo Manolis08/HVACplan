@@ -1,4 +1,4 @@
-// Service worker της εφαρμογής «Όψεις 3D». Παράγεται αυτόματα στο build (δες vite.plugins.ts).
+// Service worker της εφαρμογής «HVACplan». Παράγεται αυτόματα στο build (δες vite.plugins.ts).
 // Κρατά όλα τα αρχεία της εφαρμογής στη συσκευή ώστε να ανοίγει και χωρίς internet.
 const CACHE = 'opseis3d-__VERSION__';
 const ASSETS = __ASSETS__;

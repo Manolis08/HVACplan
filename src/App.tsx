@@ -185,7 +185,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>Όψεις 3D</h1>
+        <h1>HVACplan</h1>
         <div className="header-right">
           <span className="header-note">Μονάδες: mm</span>
           <button
