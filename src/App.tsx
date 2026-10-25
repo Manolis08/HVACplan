@@ -12,7 +12,7 @@ import type { Part, Toggles } from './model/types';
 import { FilePanel, FilePicker, type FileOptions, type LoadedFile } from './ui/FilePanel';
 import { ParamForm } from './ui/ParamForm';
 import { PwaBanner } from './ui/PwaBanner';
-import { ProjectionSymbol, type ProjectionAngle } from './ui/ProjectionSymbol';
+import type { ProjectionAngle } from './ui/ProjectionSymbol';
 import { ScaleSelector } from './ui/ScaleSelector';
 import { TemplatePicker } from './ui/TemplatePicker';
 import { SheetView } from './ui/SheetView';
@@ -44,7 +44,8 @@ export default function App() {
   // 3D: 1:1 μέχρι να την αλλάξει ο χρήστης. Φύλλο: προτεινόμενη μέχρι να την αλλάξει ο χρήστης.
   const [viewerScales, setViewerScales] = useState<Record<string, Scale>>(saved.viewerScales ?? {});
   const [sheetScales, setSheetScales] = useState<Record<string, ShapeScale>>(saved.sheetScales ?? {});
-  const [projection, setProjection] = useState<ProjectionAngle>(saved.projection ?? 'first');
+  // Γωνία προβολής: πάντα 1η (Ευρωπαϊκή, ISO E).
+  const projection: ProjectionAngle = 'first';
   const [dimsMode, setDimsMode] = useState<DimsMode>(saved.dimsMode ?? 'all');
   // Σειρά και ονόματα των έτοιμων σχημάτων, όπως τα όρισε ο χρήστης (αποθηκεύονται στη συσκευή).
   const [templateOrder, setTemplateOrder] = useState<string[]>(saved.templateOrder ?? []);
@@ -62,6 +63,8 @@ export default function App() {
   // Κρυφές γραμμές στο 3D: σβηστές σε κάθε άνοιγμα της εφαρμογής.
   const [showHidden, setShowHidden] = useState(false);
   const [colorMode, setColorMode] = useState(false);
+  // Πεδία μέτρων του έτοιμου σχήματος: κρυμμένα μέχρι να τα ζητήσει ο χρήστης.
+  const [paramsOpen, setParamsOpen] = useState(false);
 
   // Λειτουργία «Αρχείο 3D». Το αρχείο μένει μόνο στη μνήμη της σελίδας.
   const [mode, setMode] = useState<'template' | 'file'>('template');
@@ -196,7 +199,7 @@ export default function App() {
 
   useEffect(() => {
     saveState({ templateId, inputs, toggles, viewerScales, sheetScales, projection, dimsMode, templateOrder, templateNames });
-  }, [templateId, inputs, toggles, viewerScales, sheetScales, projection, dimsMode, templateOrder, templateNames]);
+  }, [templateId, inputs, toggles, viewerScales, sheetScales, dimsMode, templateOrder, templateNames]);
 
   // Βοήθεια για αυτόματους ελέγχους στον browser (μόνο σε ανάπτυξη).
   useEffect(() => {
@@ -332,6 +335,8 @@ export default function App() {
                 <p className="hint">Σύρε το ⠿ για να αλλάξεις σειρά· ✎ για μετονομασία.</p>
                 <ParamForm
                   key={template.id}
+                  open={paramsOpen}
+                  onOpenChange={setParamsOpen}
                   template={template}
                   inputs={inputs[template.id]}
                   toggles={toggles[template.id]}
@@ -396,30 +401,6 @@ export default function App() {
                 </button>
               ))}
             </div>
-          </section>
-
-          <section className="card">
-            <h2>Γωνία προβολής</h2>
-            <div className="projection-options" role="radiogroup" aria-label="Γωνία προβολής">
-              {(['first', 'third'] as const).map((a) => (
-                <button
-                  key={a}
-                  type="button"
-                  role="radio"
-                  aria-checked={projection === a}
-                  aria-label={a === 'first' ? '1η γωνία προβολής (Ευρωπαϊκή, ISO E)' : '3η γωνία προβολής (Αμερικανική, ISO A)'}
-                  className="projection-option"
-                  onClick={() => setProjection(a)}
-                >
-                  <ProjectionSymbol angle={a} />
-                  <span>
-                    <strong>{a === 'first' ? '1η γωνία' : '3η γωνία'}</strong>
-                    <small>{a === 'first' ? 'Ευρωπαϊκή · ISO E' : 'Αμερικανική · ISO A'}</small>
-                  </span>
-                </button>
-              ))}
-            </div>
-            <p className="hint">Καθορίζει τη θέση των όψεων στο φύλλο σχεδίου (Φάση 2).</p>
           </section>
         </aside>
       </main>
