@@ -69,7 +69,8 @@ export function loadState(): Partial<SavedState> {
     }
   }
   if (raw.projection === 'first' || raw.projection === 'third') out.projection = raw.projection;
-  if (raw.dimsMode === 'all' || raw.dimsMode === 'overall' || raw.dimsMode === 'none') out.dimsMode = raw.dimsMode;
+  if (raw.dimsMode === 'all' || raw.dimsMode === 'essential' || raw.dimsMode === 'none') out.dimsMode = raw.dimsMode;
+  else if (raw.dimsMode === 'overall') out.dimsMode = 'essential'; // παλιά επιλογή «Συνολικές»
   if (Array.isArray(raw.templateOrder)) out.templateOrder = raw.templateOrder.filter((x): x is string => typeof x === 'string');
   if (isRecord(raw.templateNames))
     out.templateNames = Object.fromEntries(

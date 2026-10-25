@@ -1,7 +1,7 @@
 import { CameraControls, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import CameraControlsImpl from 'camera-controls';
-import { useEffect, useImperativeHandle, useMemo, useRef, type Ref, type RefObject } from 'react';
+import { useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref, type RefObject } from 'react';
 import {
   BufferAttribute,
   BufferGeometry,
@@ -130,6 +130,11 @@ function PartMesh({ part, showHidden, colorMode }: { part: Part; showHidden: boo
   // Ομαλή μετάβαση στα χρώματα όψεων: το χρώμα κάθε έδρας ανακατεύεται από το ουδέτερο
   // στο χρώμα όψης με έναν συντελεστή (0 → 1) που κινείται λίγο σε κάθε καρέ.
   const colorMix = useRef({ value: colorMode ? 1 : 0 });
+  // Οι κρυφές γραμμές μένουν στη σκηνή όσο «ξεχτίζονται» μετά το κλείσιμο.
+  const [hiddenLeaving, setHiddenLeaving] = useState(false);
+  useEffect(() => {
+    if (showHidden) setHiddenLeaving(true);
+  }, [showHidden]);
   const material = useMemo(() => {
     const m = new MeshStandardMaterial({
       vertexColors: true,
@@ -171,7 +176,9 @@ function PartMesh({ part, showHidden, colorMode }: { part: Part; showHidden: boo
     <group>
       <mesh geometry={geometry} material={material} />
       <primitive object={edges} />
-      {showHidden && <HiddenEdges edges={part.edges} />}
+      {(showHidden || hiddenLeaving) && (
+        <HiddenEdges edges={part.edges} show={showHidden} onHidden={() => setHiddenLeaving(false)} />
+      )}
       {box && (
         <lineSegments geometry={box}>
           <lineBasicMaterial color="#8d9cab" />
@@ -186,11 +193,21 @@ function PartMesh({ part, showHidden, colorMode }: { part: Part; showHidden: boo
  * μπροστά τους (έλεγχος βάθους «μεγαλύτερο από» ανά pixel στην κάρτα γραφικών). Έτσι πιάνονται
  * και ακμές που κρύβονται πίσω από άλλο κομμάτι υλικού, όχι μόνο οι «πίσω» έδρες.
  */
-function HiddenEdges({ edges }: { edges: Float32Array }) {
+/** Χτίσιμο των κρυφών γραμμών: κάθε ακμή «τραβιέται» σε SEGMENT_TIME, η μία μετά την άλλη, σε BUILD_TIME συνολικά. */
+const BUILD_TIME = 1.5;
+const SEGMENT_TIME = 0.35;
+
+function HiddenEdges({ edges, show, onHidden }: { edges: Float32Array; show: boolean; onHidden: () => void }) {
   const camera = useThree((s) => s.camera) as OrthographicCamera;
-  const line = useMemo(() => {
+  const invalidate = useThree((s) => s.invalidate);
+  // 0 = καμία γραμμή, 1 = όλες· κρατιέται όταν αλλάζουν τα μέτρα, ώστε να μη ξαναχτίζονται.
+  const progress = useRef(0);
+  const applied = useRef<{ line: unknown; value: number }>({ line: null, value: -1 });
+  const built = useMemo(() => {
     const g = new LineSegmentsGeometry();
-    g.setPositions(edges);
+    // Αντίγραφο: το setPositions κρατά τον ίδιο πίνακα, και η κίνηση τον αλλάζει. Χωρίς αντίγραφο
+    // θα «μαζεύονταν» οι ακμές του ίδιου του σχήματος (και του φύλλου όψεων).
+    g.setPositions(edges.slice());
     // Γαλάζιο με πλήρη αδιαφάνεια: ξεχωρίζει και πάνω στο γκρι μοντέλο και στο σκοτεινό φόντο.
     const m = new LineMaterial({
       color: 0x4488ff,
@@ -204,8 +221,34 @@ function HiddenEdges({ edges }: { edges: Float32Array }) {
     const l = new LineSegments2(g, m);
     l.computeLineDistances();
     l.renderOrder = 1;
-    return l;
+    // Αντίγραφα των πλήρων ακμών και αποστάσεων: από αυτά υπολογίζεται κάθε ενδιάμεσο καρέ.
+    const pos = (g.getAttribute('instanceStart') as unknown as { data: { array: Float32Array; needsUpdate: boolean } }).data;
+    const dist = (g.getAttribute('instanceDistanceStart') as unknown as { data: { array: Float32Array; needsUpdate: boolean } }).data;
+    return { line: l, pos, dist, fullPos: pos.array.slice(), fullDist: dist.array.slice() };
   }, [edges]);
+  const { line } = built;
+
+  /** Δείχνει το κομμάτι κάθε ακμής που αντιστοιχεί στη συνολική πρόοδο t (0…1). */
+  const apply = (t: number) => {
+    const { pos, dist, fullPos, fullDist } = built;
+    const n = fullPos.length / 6;
+    const spread = BUILD_TIME - SEGMENT_TIME;
+    const time = t * BUILD_TIME;
+    for (let i = 0; i < n; i++) {
+      const delay = n > 1 ? (i / (n - 1)) * spread : 0;
+      const p = Math.min(1, Math.max(0, (time - delay) / SEGMENT_TIME));
+      const o = i * 6;
+      for (let k = 0; k < 3; k++) {
+        const a = fullPos[o + k];
+        pos.array[o + 3 + k] = a + (fullPos[o + 3 + k] - a) * p;
+      }
+      // και οι αποστάσεις, ώστε οι παύλες να μένουν ίδιες και να μην «τεντώνονται»
+      dist.array[i * 2 + 1] = fullDist[i * 2] + (fullDist[i * 2 + 1] - fullDist[i * 2]) * p;
+    }
+    pos.needsUpdate = true;
+    dist.needsUpdate = true;
+    line.visible = t > 0;
+  };
   useEffect(
     () => () => {
       line.geometry.dispose();
@@ -214,10 +257,27 @@ function HiddenEdges({ edges }: { edges: Float32Array }) {
     [line],
   );
   // Παύλες 4 px / κενό 4 px ανεξάρτητα από το zoom (ορθογραφική: 1 px = 1/zoom mm).
-  useFrame(() => {
+  useEffect(() => invalidate(), [show, invalidate]);
+  useFrame((_, delta) => {
     const px = 1 / camera.zoom;
     line.material.dashSize = 4 * px;
     line.material.gapSize = 4 * px;
+
+    const target = show ? 1 : 0;
+    if (progress.current !== target) {
+      if (reducedMotion()) progress.current = target;
+      else {
+        // περιορισμένο βήμα: μετά από αδράνεια το πρώτο delta είναι τεράστιο
+        const step = Math.min(delta, 1 / 30) / BUILD_TIME;
+        progress.current = target > progress.current ? Math.min(target, progress.current + step) : Math.max(target, progress.current - step);
+      }
+      invalidate();
+    }
+    if (applied.current.line !== line || applied.current.value !== progress.current) {
+      apply(progress.current);
+      applied.current = { line, value: progress.current };
+    }
+    if (!show && progress.current === 0) onHidden();
   });
   return <primitive object={line} />;
 }
@@ -246,6 +306,7 @@ function SceneController({ part, scale, dimsMode, apiRef, overlayRef, onViewChan
     pending: null as ViewId | null,
     lastSvg: '',
     initialised: false,
+    labelMemory: new Map<string, number>(),
   });
 
   // Τοποθέτηση κάμερας: ίδια κατεύθυνση, κέντρο στο μοντέλο, zoom ώστε να χωρά.
@@ -402,6 +463,7 @@ function SceneController({ part, scale, dimsMode, apiRef, overlayRef, onViewChan
       corners,
       scale,
       mode: dimsMode,
+      memory: s.labelMemory,
     });
     if (svg !== s.lastSvg && overlayRef.current) {
       overlayRef.current.innerHTML = svg;

@@ -1,7 +1,40 @@
 import { formatScaled, type Scale } from '../lib/scale';
 import type { DimSpec, Vec3 } from '../model/types';
 
-export type DimsMode = 'all' | 'overall' | 'none';
+/**
+ * all: όλες οι διαστάσεις. essential: οι λιγότερες απαραίτητες (οι υπόλοιπες βγαίνουν με πρόσθεση/
+ * αφαίρεση, βλ. essentialDims). none: καμία.
+ */
+export type DimsMode = 'all' | 'essential' | 'none';
+
+/**
+ * Οι λιγότερες διαστάσεις από τις οποίες βγαίνουν όλες οι άλλες με πρόσθεση και αφαίρεση.
+ * Κάθε γραμμική διάσταση ενώνει δύο συντεταγμένες στον άξονά της (π.χ. x = 9 και x = 21).
+ * Αν οι δύο συντεταγμένες συνδέονται ήδη μέσω άλλων διαστάσεων, η διάσταση περισσεύει
+ * (είναι άθροισμα ή διαφορά τους). Οι συνολικές κρατιούνται πρώτες· διάμετροι και ακτίνες πάντα.
+ */
+export function essentialDims(dims: DimSpec[]): DimSpec[] {
+  const parent = new Map<string, string>();
+  const find = (k: string): string => {
+    let r = k;
+    while (parent.has(r) && parent.get(r) !== r) r = parent.get(r)!;
+    parent.set(k, r);
+    return r;
+  };
+  const keep = new Set<DimSpec>();
+  const linearDims = dims.filter((d): d is Extract<DimSpec, { kind: 'linear' }> => d.kind === 'linear');
+  const ordered = [...linearDims.filter((d) => d.overall), ...linearDims.filter((d) => !d.overall)];
+  for (const d of ordered) {
+    const axis = [0, 1, 2].reduce((best, i) => (Math.abs(d.b[i] - d.a[i]) > Math.abs(d.b[best] - d.a[best]) ? i : best), 0);
+    const key = (v: number) => `${axis}:${Math.round(v * 1e6) / 1e6}`;
+    const ra = find(key(d.a[axis]));
+    const rb = find(key(d.b[axis]));
+    if (ra === rb) continue; // βγαίνει από τις άλλες
+    parent.set(ra, rb);
+    keep.add(d);
+  }
+  return dims.filter((d) => d.kind !== 'linear' || keep.has(d));
+}
 
 type P2 = [number, number];
 
@@ -15,6 +48,11 @@ export interface DimLayoutInput {
   scale: Scale;
   mode: DimsMode;
   style?: DimStyle;
+  /**
+   * Μνήμη θέσεων ετικετών ανάμεσα σε καρέ (μόνο στην οθόνη): κάθε ετικέτα κρατά τη θέση που είχε,
+   * όσο χωράει εκεί, ώστε να μην «τρεμοπαίζει» ανάμεσα σε εναλλακτικές θέσεις όταν κινείται η κάμερα.
+   */
+  memory?: Map<string, number>;
 }
 
 export interface DimStyle {
@@ -28,7 +66,11 @@ export interface DimStyle {
   arrowL: number;
   arrowW: number;
   labelOff: number;
-  /** Κάτω από αυτό το μήκος η διάσταση θεωρείται παράλληλη με τη ματιά και παραλείπεται. */
+  /**
+   * Ελάχιστο μήκος (προστασία από διαίρεση με το μηδέν). Το αν μια διάσταση κρύβεται επειδή
+   * είναι παράλληλη με τη ματιά κρίνεται από τη γωνία (facing), ΟΧΙ από το μέγεθος στην οθόνη,
+   * ώστε οι μικρές διαστάσεις να φαίνονται και όταν η κάμερα είναι μακριά.
+   */
   minLen: number;
   /**
    * Φύλλο χαρτιού: ρητά χρώματα/πάχη (όχι CSS) και κείμενο παράλληλο στη γραμμή διάστασης
@@ -38,7 +80,7 @@ export interface DimStyle {
 }
 
 /** Οθόνη: μονάδες σε pixel. */
-export const SCREEN_STYLE: DimStyle = { gap: 14, step: 22, extGap: 3, extOver: 6, arrowL: 8, arrowW: 2.6, labelOff: 7, minLen: 8 };
+export const SCREEN_STYLE: DimStyle = { gap: 14, step: 22, extGap: 3, extOver: 6, arrowL: 8, arrowW: 2.6, labelOff: 7, minLen: 0.5 };
 
 /** Χαρτί: μονάδες σε mm (κείμενο 3,5 mm, γραμμές 0,25 mm). */
 export const PAPER_STYLE: DimStyle = {
@@ -49,7 +91,7 @@ export const PAPER_STYLE: DimStyle = {
   arrowL: 2.5,
   arrowW: 0.8,
   labelOff: 1.6,
-  minLen: 1,
+  minLen: 0.05,
   paper: { fontSize: 3.5, lineWidth: 0.25 },
 };
 
@@ -59,6 +101,15 @@ const mul = (a: P2, k: number): P2 => [a[0] * k, a[1] * k];
 const dot2 = (a: P2, b: P2) => a[0] * b[0] + a[1] * b[1];
 const len2 = (a: P2) => Math.hypot(a[0], a[1]);
 const dot3 = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+
+/** Πόσο «κάθετα» στη ματιά βρίσκεται μια κατεύθυνση: 1 = εντελώς, 0 = παράλληλη με τη ματιά. */
+const MIN_FACING = 0.3;
+function facing(v: Vec3, viewDir: Vec3): number {
+  const l = Math.hypot(v[0], v[1], v[2]);
+  if (l === 0) return 0;
+  const c = dot3(v, viewDir) / l;
+  return Math.sqrt(Math.max(0, 1 - c * c));
+}
 const r = (v: number) => v.toFixed(2);
 const pt = (p: P2) => `${r(p[0])} ${r(p[1])}`;
 
@@ -143,13 +194,18 @@ function labelBox(l: LabelSpec, s: DimStyle) {
  * Αποφυγή επικαλύψεων: κάθε ετικέτα που πέφτει πάνω σε προηγούμενη μετακινείται κατά μήκος της
  * γραμμής της (±) ή λίγο προς τα έξω, στην πρώτη θέση που είναι ελεύθερη.
  */
-function resolveLabels(labels: LabelSpec[], s: DimStyle): LabelSpec[] {
+function resolveLabels(labels: LabelSpec[], s: DimStyle, memory?: Map<string, number>): LabelSpec[] {
   const size = fontSize(s);
   const pad = size * 0.15;
   const placed: ReturnType<typeof labelBox>[] = [];
   const hits = (b: ReturnType<typeof labelBox>) =>
     placed.some((p) => b.x0 < p.x1 + pad && b.x1 > p.x0 - pad && b.y0 < p.y1 + pad && b.y1 > p.y0 - pad);
+  const seen = new Map<string, number>();
   return labels.map((l) => {
+    // κλειδί: κείμενο + αύξων αριθμός για ίδια κείμενα (π.χ. δύο «15»)
+    const nth = (seen.get(l.text) ?? 0) + 1;
+    seen.set(l.text, nth);
+    const key = `${l.text}#${nth}`;
     const w = l.text.length * size * 0.62 + size * 0.3;
     const h = size * 1.15;
     const shifts: P2[] = [
@@ -163,14 +219,23 @@ function resolveLabels(labels: LabelSpec[], s: DimStyle): LabelSpec[] {
       add(mul(l.n, h), mul(l.u, 0.75 * w)),
       add(mul(l.n, h), mul(l.u, -0.75 * w)),
     ];
-    for (const d of shifts) {
-      const cand = { ...l, x: l.x + d[0], y: l.y + d[1] };
-      const box = labelBox(cand, s);
-      if (!hits(box)) {
-        placed.push(box);
-        return cand;
-      }
+    const at = (i: number) => ({ ...l, x: l.x + shifts[i][0], y: l.y + shifts[i][1] });
+    const take = (i: number) => {
+      const cand = at(i);
+      placed.push(labelBox(cand, s));
+      memory?.set(key, i);
+      return cand;
+    };
+    const prev = memory?.get(key);
+    if (prev !== undefined && prev > 0 && prev < shifts.length) {
+      // Επιστροφή στην κανονική θέση μόνο αν είναι άνετα ελεύθερη (υστέρηση)· αλλιώς μένει όπου ήταν.
+      const home = labelBox(at(0), s);
+      const roomy = { x0: home.x0 - size * 0.5, x1: home.x1 + size * 0.5, y0: home.y0 - size * 0.5, y1: home.y1 + size * 0.5 };
+      if (!hits(roomy)) return take(0);
+      if (!hits(labelBox(at(prev), s))) return take(prev);
     }
+    for (let i = 0; i < shifts.length; i++) if (!hits(labelBox(at(i), s))) return take(i);
+    memory?.delete(key);
     placed.push(labelBox(l, s));
     return l;
   });
@@ -196,7 +261,7 @@ export function layoutDims(input: DimLayoutInput): string {
   const s = input.style ?? SCREEN_STYLE;
   const at = attrs(s);
   if (mode === 'none') return '';
-  const dims = input.dims.filter((d) => mode === 'all' || d.overall);
+  const dims = mode === 'essential' ? essentialDims(input.dims) : input.dims;
   const projCorners = corners.map(project);
   const parts: string[] = [];
   const labels: LabelSpec[] = [];
@@ -213,7 +278,9 @@ export function layoutDims(input: DimLayoutInput): string {
     const B = project(dim.b);
     const ab = sub(B, A);
     const len = len2(ab);
-    if (len < s.minLen) continue; // η διάσταση είναι παράλληλη με τη ματιά μας
+    // η διάσταση είναι (σχεδόν) παράλληλη με τη ματιά μας
+    const dir: Vec3 = [dim.b[0] - dim.a[0], dim.b[1] - dim.a[1], dim.b[2] - dim.a[2]];
+    if (facing(dir, viewDir) < MIN_FACING || len < s.minLen) continue;
     const u = mul(ab, 1 / len);
     const perp: P2 = [-u[1], u[0]];
 
@@ -298,7 +365,9 @@ export function layoutDims(input: DimLayoutInput): string {
       const A = project([dim.center[0] - a[0] * rad, dim.center[1] - a[1] * rad, dim.center[2] - a[2] * rad]);
       const B = project([dim.center[0] + a[0] * rad, dim.center[1] + a[1] * rad, dim.center[2] + a[2] * rad]);
       const l = len2(sub(B, A));
-      if (!best || l > best.len) best = { A, B, len: l };
+      // Άλλη κατεύθυνση μόνο αν είναι αισθητά μεγαλύτερη: σε ισοπαλία (π.χ. ισομετρική) η μικρή
+      // αριθμητική διαφορά άλλαζε τη γραμμή σε κάθε καρέ και η ετικέτα «τρεμόπαιζε».
+      if (!best || l > best.len * 1.05) best = { A, B, len: l };
     }
     if (!best || best.len < s.minLen) continue;
     const { A, B, len } = best;
@@ -323,7 +392,7 @@ export function layoutDims(input: DimLayoutInput): string {
       dim.center[2] + dim.dir[2] * dim.value,
     ]);
     const len = len2(sub(B, A));
-    if (len < s.minLen) continue;
+    if (facing(dim.dir, viewDir) < MIN_FACING || len < s.minLen) continue;
     const u = mul(sub(B, A), 1 / len);
     const tail = add(B, mul(u, s.arrowL * 2.5));
     parts.push(
@@ -333,6 +402,6 @@ export function layoutDims(input: DimLayoutInput): string {
     );
   }
 
-  const finalLabels = resolveLabels(labels, s);
+  const finalLabels = resolveLabels(labels, s, input.memory);
   return parts.join('').replace(/\u0001(\d+)\u0001/g, (_, i) => emitLabel(finalLabels[Number(i)], s));
 }

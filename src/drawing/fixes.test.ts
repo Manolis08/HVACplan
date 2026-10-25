@@ -83,13 +83,11 @@ describe('Bug 2 + 6: το φύλλο (A3 οριζόντιο) χωρά πάντα
           if (usedScale !== scale) expect(warnings[0]).toMatch(/σμικρύνθηκε/);
         });
 
-  it('γραμμές διαχωρισμού (όχι σταυρός) στο x = 210 και y = 148,5, και υπόμνημα 160 × 50 κολλητά κάτω δεξιά', () => {
+  it('σταυρός 2×2 στο x = 210 και y = 148,5 (μέσα στο πλαίσιο), και υπόμνημα 160 × 50 κολλητά κάτω δεξιά', () => {
     const p = partOf('notched-cube');
     const opts = { projection: 'first' as const, projectionLines: false, scale: { kind: 'reduce', n: 1 } as Scale, fields };
     const svg = sheetSvg(computeSheetViews(p, 'first'), p, opts).svg;
     expect(svg).toContain('viewBox="0 0 420 297"');
-    expect(svg).toContain('x1="210.00" y1="0" x2="210.00" y2="297"');
-    expect(svg).toContain('x1="0" y1="148.50" x2="420" y2="148.50"');
     // η κάτω δεξιά γωνία του υπομνήματος = η γωνία του πλαισίου (410, 287)
     expect(svg).toContain('<rect x="250.00" y="237.00" width="160" height="50"/>');
     // γραμμές κελιών όπως στο πρότυπο: 50 | 60 | 50 πάνω, 50 | 75 | 35 κάτω
@@ -101,12 +99,15 @@ describe('Bug 2 + 6: το φύλλο (A3 οριζόντιο) χωρά πάντα
       'x1="250.00" y1="277.00" x2="300.00" y2="277.00"',
     ])
       expect(svg).toContain(l);
-    // το σύμβολο γωνίας προβολής μέσα στο υπόμνημα (στήλη ΑΡ. ΣΧΕΔΙΟΥ)
-    const sym = svg.match(/<path d="M([\d.]+) ([\d.]+)L[^"]*Z"\/><circle/)!;
-    expect(Number(sym[1])).toBeGreaterThan(330);
-    expect(Number(sym[2])).toBeGreaterThan(237);
+    // χωρίς σύμβολο γωνίας προβολής και χωρίς «1η γωνία» στο υπόμνημα
+    expect(svg).not.toMatch(/<path d="M[\d.]+ [\d.]+L[^"]*Z"\/><circle/);
+    expect(svg).not.toContain('1η γωνία');
     for (const t of ['ΟΝΟΜΑ', 'ΤΜΗΜΑ', 'ΤΑΞΗ', 'ΗΜ/ΝΙΑ', 'ΚΛΙΜΑΚΑ', 'ΘΕΜΑ', 'ΑΡ. ΣΧΕΔΙΟΥ', 'ΣΧΟΛΗ']) expect(svg).toContain(`>${t}<`);
-    expect(sheetSvg(computeSheetViews(p, 'first'), p, { ...opts, layout: 'standard' }).svg).not.toContain('#cccccc');
+    // σταυρός 2×2: μαύρος, πάχος πλαισίου, μέσα στο πλαίσιο· στο Standard δεν υπάρχει
+    expect(svg).toContain(
+      '<g class="sheet-divider" stroke="#000" stroke-width="0.7"><line x1="210.00" y1="10" x2="210.00" y2="287"/><line x1="10" y1="148.50" x2="410" y2="148.50"/></g>',
+    );
+    expect(sheetSvg(computeSheetViews(p, 'first'), p, { ...opts, layout: 'standard' }).svg).not.toContain('sheet-divider');
   });
 
   it('το υπόμνημα μένει ίδιο (160 × 50) σε κάθε κλίμακα· μόνο η τιμή της κλίμακας αλλάζει', () => {

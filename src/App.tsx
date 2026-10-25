@@ -32,7 +32,7 @@ const NO_OPTIONS: FileOptions = { unit: null, up: null, rotation: IDENTITY, conf
 
 const DIMS_MODES: { id: DimsMode; label: string }[] = [
   { id: 'all', label: 'Όλες' },
-  { id: 'overall', label: 'Συνολικές' },
+  { id: 'essential', label: 'Απαραίτητες' },
   { id: 'none', label: 'Καμία' },
 ];
 
@@ -63,6 +63,29 @@ export default function App() {
   // Κρυφές γραμμές στο 3D: σβηστές σε κάθε άνοιγμα της εφαρμογής.
   const [showHidden, setShowHidden] = useState(false);
   const [colorMode, setColorMode] = useState(false);
+  // Παράθυρο κλίμακας 3D (ανοίγει από το κουμπί «Κλίμακα» πάνω δεξιά στην προβολή).
+  const [scaleOpen, setScaleOpen] = useState(false);
+  const scaleChipRef = useRef<HTMLButtonElement>(null);
+  const scalePopoverRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!scaleOpen) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (!scalePopoverRef.current?.contains(t) && !scaleChipRef.current?.contains(t)) setScaleOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setScaleOpen(false);
+        scaleChipRef.current?.focus();
+      }
+    };
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [scaleOpen]);
   // Πεδία μέτρων του έτοιμου σχήματος: κρυμμένα μέχρι να τα ζητήσει ο χρήστης.
   const [paramsOpen, setParamsOpen] = useState(false);
 
@@ -169,7 +192,6 @@ export default function App() {
   const viewerScale = viewerScales[shapeKey] ?? DEFAULT_SCALE;
   const sheetScale = sheetScales[shapeKey]?.scale ?? DEFAULT_SCALE;
   // Ο επιλογέας κλίμακας αλλάζει μόνο την προβολή που είναι ανοιχτή.
-  const scale = pane === 'sheet' ? sheetScale : viewerScale;
   const setScale = (s: Scale) =>
     pane === 'sheet'
       ? setSheetScales((prev) => ({ ...prev, [shapeKey]: { scale: s, manual: true } }))
@@ -231,7 +253,10 @@ export default function App() {
             <button type="button" role="tab" aria-selected={pane === '3d'} onClick={() => setPane('3d')}>
               3D
             </button>
-            <button type="button" role="tab" aria-selected={pane === 'sheet'} onClick={() => setPane('sheet')}>
+            <button type="button" role="tab" aria-selected={pane === 'sheet'} onClick={() => {
+                setPane('sheet');
+                setScaleOpen(false);
+              }}>
               Φύλλο όψεων
             </button>
           </div>
@@ -261,10 +286,24 @@ export default function App() {
             <div className="chip chip-view" aria-live="polite">
               Όψη: <strong>{viewLabel(view)}</strong>
             </div>
-            <div className="chip chip-scale">
-              Κλίμακα <strong>{scaleLabel(viewerScale)}</strong>
+            <button
+              ref={scaleChipRef}
+              type="button"
+              className={`chip chip-scale chip-button${scaleOpen ? ' open' : ''}`}
+              aria-expanded={scaleOpen}
+              aria-controls="scale-popover"
+              aria-label={`Κλίμακα 3D: ${scaleLabel(viewerScale)}. Πάτα για αλλαγή.`}
+              onClick={() => setScaleOpen((o) => !o)}
+            >
+              Κλίμακα <strong>{scaleLabel(viewerScale)}</strong> <span className="chevron" aria-hidden="true">▾</span>
               {viewerScale.n !== 1 && <span className="chip-sub">{scaleHint(viewerScale)}</span>}
-            </div>
+            </button>
+            {scaleOpen && (
+              <div ref={scalePopoverRef} id="scale-popover" className="scale-popover" role="dialog" aria-label="Κλίμακα 3D">
+                <h2>Κλίμακα 3D</h2>
+                <ScaleSelector key={shapeKey} value={viewerScale} onChange={setScale} />
+              </div>
+            )}
             {!fileMode && stale && (
               <div className="stale-banner" role="status">
                 Τα μέτρα έχουν σφάλμα — εμφανίζεται το τελευταίο έγκυρο σχήμα.
@@ -356,10 +395,13 @@ export default function App() {
             )}
           </section>
 
-          <section className="card">
-            <h2>Κλίμακα {pane === 'sheet' ? 'φύλλου όψεων' : '3D'}</h2>
-            <ScaleSelector value={scale} onChange={setScale} />
-          </section>
+          {/* Η κλίμακα του 3D αλλάζει από το κουμπί «Κλίμακα» πάνω δεξιά στην προβολή. */}
+          {pane === 'sheet' && (
+            <section className="card">
+              <h2>Κλίμακα φύλλου όψεων</h2>
+              <ScaleSelector key={shapeKey} value={sheetScale} onChange={setScale} />
+            </section>
+          )}
 
           <section className="card">
             <h2>Εμφάνιση στο 3D</h2>

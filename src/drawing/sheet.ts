@@ -59,25 +59,10 @@ export const TB_Y = PAGE_H - FRAME - TB_H;
 const QUAD_W = 200;
 const QUAD_H = 128.5;
 const QUAD_MARGIN = 22; // χώρος για διαστάσεις γύρω από κάθε όψη μέσα στο τεταρτημόριό της
-const DIVIDER_WIDTH = 0.5 * (25.4 / 72); // 0,5 pt
+/** Πάχος πλαισίου και σταυρού 2×2 (mm). */
+const FRAME_WIDTH = 0.7;
 
 const f2 = (x: number) => x.toFixed(2);
-
-function projectionSymbol(angle: ProjectionAngle, x: number, y: number, s = 0.4): string {
-  // Ίδια γεωμετρία με το σύμβολο της εφαρμογής (ISO 5456-2).
-  const first = angle === 'first';
-  const tx = first ? 4 : 34;
-  const cx = first ? 46 : 16;
-  const P = (px: number, py: number) => `${f2(x + px * s)} ${f2(y + py * s)}`;
-  return (
-    `<g fill="none" stroke="#000" stroke-width="0.35" stroke-linejoin="round">` +
-    `<path d="M${P(tx, 11)}L${P(tx + 24, 5)}L${P(tx + 24, 25)}L${P(tx, 19)}Z"/>` +
-    `<circle cx="${f2(x + cx * s)}" cy="${f2(y + 15 * s)}" r="${f2(10 * s)}"/><circle cx="${f2(x + cx * s)}" cy="${f2(y + 15 * s)}" r="${f2(4 * s)}"/></g>` +
-    `<g stroke="#000" stroke-width="0.18" stroke-dasharray="3 1 0.5 1">` +
-    `<line x1="${f2(x)}" y1="${f2(y + 15 * s)}" x2="${f2(x + 62 * s)}" y2="${f2(y + 15 * s)}"/>` +
-    `<line x1="${f2(x + cx * s)}" y1="${f2(y + 2 * s)}" x2="${f2(x + cx * s)}" y2="${f2(y + 28 * s)}"/></g>`
-  );
-}
 
 const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -113,11 +98,9 @@ function titleBlock(o: SheetOptions, x: number, y: number): string {
     // σειρές 4–5: λεζάντα και τιμή μέσα στο ίδιο κελί των 50 mm
     text(2, 35, 'ΗΜ/ΝΙΑ', LABEL) + text(48, 35, f.date, VALUE, 'normal', 'end'),
     text(2, 45, 'ΚΛΙΜΑΚΑ', LABEL) + text(48, 45, scaleLabel(o.scale), 3.6, 'bold', 'end'),
-    // ΣΧΟΛΗ (110–160 × 0–30), με τη γωνία προβολής κάτω δεξιά
+    // ΣΧΟΛΗ (110–160 × 0–30)
     text(112, 4, 'ΣΧΟΛΗ', 2.2),
-    text(135, 14, f.school, VALUE, 'normal', 'middle'),
-    projectionSymbol(o.projection, x + 137, y + 21, 0.2),
-    text(135.5, 26, o.projection === 'first' ? '1η γωνία' : '3η γωνία', 2, 'normal', 'end'),
+    text(135, 16, f.school, VALUE, 'normal', 'middle'),
     // ΘΕΜΑ (50–125 × 30–50)
     text(52, 33.5, 'ΘΕΜΑ', 2.2),
     text(87.5, 42, f.title, 4.2, 'bold', 'middle'),
@@ -383,10 +366,12 @@ export function sheetSvg(views: SheetView[], part: Part, o: SheetOptions): Sheet
   const svg = [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${PAGE_W}mm" height="${PAGE_H}mm" viewBox="0 0 ${PAGE_W} ${PAGE_H}">`,
     `<rect width="${PAGE_W}" height="${PAGE_H}" fill="#fff"/>`,
-    `<rect x="${FRAME}" y="${FRAME}" width="${PAGE_W - 2 * FRAME}" height="${PAGE_H - 2 * FRAME}" fill="none" stroke="#000" stroke-width="0.7"/>`,
+    `<rect x="${FRAME}" y="${FRAME}" width="${PAGE_W - 2 * FRAME}" height="${PAGE_H - 2 * FRAME}" fill="none" stroke="#000" stroke-width="${FRAME_WIDTH}"/>`,
+    // Σταυρός 2×2: ίδιο μαύρο και πάχος με το πλαίσιο, από πλευρά σε πλευρά του πλαισίου.
     quad
-      ? `<g stroke="#cccccc" stroke-width="${f2(DIVIDER_WIDTH)}" opacity="0.7"><line x1="${f2(PAGE_W / 2)}" y1="0" x2="${f2(PAGE_W / 2)}" y2="${PAGE_H}"/>` +
-        `<line x1="0" y1="${f2(PAGE_H / 2)}" x2="${PAGE_W}" y2="${f2(PAGE_H / 2)}"/></g>`
+      ? `<g class="sheet-divider" stroke="#000" stroke-width="${FRAME_WIDTH}">` +
+        `<line x1="${f2(PAGE_W / 2)}" y1="${FRAME}" x2="${f2(PAGE_W / 2)}" y2="${PAGE_H - FRAME}"/>` +
+        `<line x1="${FRAME}" y1="${f2(PAGE_H / 2)}" x2="${PAGE_W - FRAME}" y2="${f2(PAGE_H / 2)}"/></g>`
       : '',
     projLines,
     `<path d="${centers}" fill="none" stroke="#000" stroke-width="0.25" stroke-dasharray="${CENTERLINE_DASH}"/>`,

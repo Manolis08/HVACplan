@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { edgeTopology } from '../drawing/hlr';
 import { computeSheetViews, sheetSvg, suggestedScale, type TitleFields } from '../drawing/sheet';
 import type { Scale } from '../lib/scale';
@@ -54,6 +54,12 @@ async function svgToPng(svg: string): Promise<Blob> {
   }
 }
 
+const DOWNLOADS = [
+  { kind: 'pdf', note: 'Για εκτύπωση σε A3' },
+  { kind: 'png', note: 'Εικόνα 300 dpi' },
+  { kind: 'svg', note: 'Διανυσματικό, για επεξεργασία' },
+] as const;
+
 interface Props {
   part: Part | null;
   /** Γιατί δεν υπάρχει φύλλο (π.χ. ανεπιβεβαίωτο αρχείο). */
@@ -78,6 +84,23 @@ export function SheetView({ part, blockedReason, projection, openMesh, fileName,
   const [date, setDate] = useState(today);
   const [busy, setBusy] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [tbOpen, setTbOpen] = useState(false);
+  // Μενού «Λήψη»: κλείνει με κλικ έξω ή Esc.
+  const [dlOpen, setDlOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!dlOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setDlOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setDlOpen(false);
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [dlOpen]);
   useEffect(() => {
     try {
       localStorage.setItem(FIELDS_KEY, JSON.stringify(saved));
@@ -147,58 +170,100 @@ export function SheetView({ part, blockedReason, projection, openMesh, fileName,
         )}
       </div>
       <div className="sheet-toolbar">
-        <label className="toggle compact">
-          <input type="checkbox" checked={projectionLines} onChange={(e) => setProjectionLines(e.target.checked)} />
-          <span>Γραμμές προβολής</span>
-        </label>
-        <label className="toggle compact">
-          <input type="checkbox" checked={showDims} onChange={(e) => setShowDims(e.target.checked)} />
-          <span>Διαστάσεις</span>
-        </label>
-        <button
-          type="button"
-          className="secondary-button"
-          aria-pressed={layout === 'quadrants'}
-          onClick={() => setLayout((l) => (l === 'standard' ? 'quadrants' : 'standard'))}
-        >
-          Layout: {layout === 'standard' ? 'Standard' : '2×2'}
-        </button>
-        {openMesh && !message && <span className="warning inline">Κρυφές γραμμές ίσως μη ακριβείς για ανοιχτά πλέγματα.</span>}
-        {!message &&
-          sheet?.warnings.map((w) => (
-            <span key={w} className="warning inline">
-              {w}
-            </span>
-          ))}
-        {exportError && <span className="warning inline">{exportError}</span>}
-        <div className="export-buttons">
-          {(['pdf', 'png', 'svg'] as const).map((k) => (
+        <div className="sheet-options" role="group" aria-label="Επιλογές φύλλου">
+          <button type="button" className="pill" aria-pressed={projectionLines} onClick={() => setProjectionLines((v) => !v)}>
+            Γραμμές προβολής
+          </button>
+          <button type="button" className="pill" aria-pressed={showDims} onClick={() => setShowDims((v) => !v)}>
+            Διαστάσεις
+          </button>
+          <div className="segmented layout-switch" role="radiogroup" aria-label="Διάταξη όψεων">
+            {(
+              [
+                ['quadrants', '2×2'],
+                ['standard', 'Standard'],
+              ] as const
+            ).map(([id, label]) => (
+              <button key={id} type="button" role="radio" aria-checked={layout === id} onClick={() => setLayout(id)}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="sheet-actions">
+          {!message && (
             <button
-              key={k}
               type="button"
-              className={k === 'pdf' ? 'primary-button' : 'secondary-button'}
-              disabled={!svg || !!message || !!busy}
-              onClick={() => void exportAs(k)}
+              className={`secondary-button with-chevron${tbOpen ? ' open' : ''}`}
+              aria-expanded={tbOpen}
+              aria-controls="title-block-form"
+              onClick={() => setTbOpen((o) => !o)}
             >
-              {busy === k ? 'Ετοιμασία…' : `Λήψη ${k.toUpperCase()}`}
+              Υπόμνημα <span className="chevron" aria-hidden="true">▾</span>
             </button>
-          ))}
+          )}
+          <div className="menu-wrap" ref={menuRef}>
+            <button
+              type="button"
+              className={`primary-button with-chevron${dlOpen ? ' open' : ''}`}
+              aria-haspopup="menu"
+              aria-expanded={dlOpen}
+              disabled={!svg || !!message || !!busy}
+              onClick={() => setDlOpen((o) => !o)}
+            >
+              {busy ? `Ετοιμασία ${busy.toUpperCase()}…` : 'Λήψη'} <span className="chevron" aria-hidden="true">▾</span>
+            </button>
+            {dlOpen && (
+              <div className="menu" role="menu" aria-label="Λήψη φύλλου">
+                {DOWNLOADS.map((d) => (
+                  <button
+                    key={d.kind}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setDlOpen(false);
+                      void exportAs(d.kind);
+                    }}
+                  >
+                    <strong>{d.kind.toUpperCase()}</strong>
+                    <small>{d.note}</small>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
+
+      {(exportError || (!message && (openMesh || (sheet?.warnings.length ?? 0) > 0))) && (
+        <div className="sheet-warnings">
+          {openMesh && !message && <p className="warning">Κρυφές γραμμές ίσως μη ακριβείς για ανοιχτά πλέγματα.</p>}
+          {!message &&
+            sheet?.warnings.map((w) => (
+              <p key={w} className="warning">
+                {w}
+              </p>
+            ))}
+          {exportError && <p className="warning">{exportError}</p>}
+        </div>
+      )}
+
       {!message && (
-        <details className="title-block-form">
-          <summary>Υπόμνημα</summary>
-          <div className="tb-grid">
-            {field('Θέμα', titleOverride, setTitleOverride, title)}
-            {field('Όνομα', saved.author, (v) => setSaved((s) => ({ ...s, author: v })))}
-            {field('Τμήμα', saved.section, (v) => setSaved((s) => ({ ...s, section: v })))}
-            {field('Τάξη', saved.classroom, (v) => setSaved((s) => ({ ...s, classroom: v })))}
-            {field('Αρ. σχεδίου', saved.drawingNo, (v) => setSaved((s) => ({ ...s, drawingNo: v })))}
-            {field('Σχολή', saved.school, (v) => setSaved((s) => ({ ...s, school: v })))}
-            {field('Ημερομηνία', date, setDate)}
+        <div id="title-block-form" className={`collapsible title-block-form${tbOpen ? ' open' : ''}`} inert={!tbOpen}>
+          <div className="collapsible-inner">
+            <div className="tb-grid">
+              {field('Θέμα', titleOverride, setTitleOverride, title)}
+              {field('Όνομα', saved.author, (v) => setSaved((s) => ({ ...s, author: v })))}
+              {field('Τμήμα', saved.section, (v) => setSaved((s) => ({ ...s, section: v })))}
+              {field('Τάξη', saved.classroom, (v) => setSaved((s) => ({ ...s, classroom: v })))}
+              {field('Αρ. σχεδίου', saved.drawingNo, (v) => setSaved((s) => ({ ...s, drawingNo: v })))}
+              {field('Σχολή', saved.school, (v) => setSaved((s) => ({ ...s, school: v })))}
+              {field('Ημερομηνία', date, setDate)}
+            </div>
+            <p className="hint">Η κλίμακα μπαίνει αυτόματα από τις ρυθμίσεις.</p>
           </div>
-          <p className="hint">Η κλίμακα και η γωνία προβολής μπαίνουν αυτόματα από τις ρυθμίσεις.</p>
-        </details>
+        </div>
       )}
     </div>
   );
