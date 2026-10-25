@@ -281,6 +281,7 @@ export default function App() {
               showHidden={showHidden}
               colorMode={colorMode}
               theme={theme}
+              shape={{ key: shapeKey, index: fileMode ? -1 : orderedTemplates.findIndex((t) => t.id === templateId) }}
               onViewChange={setView}
             />
             <div className="chip chip-view" aria-live="polite">
@@ -405,22 +406,28 @@ export default function App() {
 
           <section className="card">
             <h2>Εμφάνιση στο 3D</h2>
-            <label className="toggle">
-              <input type="checkbox" checked={showHidden} onChange={(e) => setShowHidden(e.target.checked)} />
-              <span>Δείξε κρυφές γραμμές (διακεκομμένες)</span>
-            </label>
+            <div className="toggle-buttons">
+              <button
+                type="button"
+                className={`secondary-button color-mode${showHidden ? ' on' : ''}`}
+                aria-pressed={showHidden}
+                onClick={() => setShowHidden((v) => !v)}
+              >
+                Διακεκομμένες γραμμές: {showHidden ? 'ON' : 'OFF'}
+              </button>
+              <button
+                type="button"
+                className={`secondary-button color-mode${colorMode ? ' on' : ''}`}
+                aria-pressed={colorMode}
+                onClick={() => setColorMode((c) => !c)}
+              >
+                Χρώματα όψεων: {colorMode ? 'ON' : 'OFF'}
+              </button>
+            </div>
             {showHidden && edgeCount > 10000 && (
               <p className="warning">Το μοντέλο έχει {edgeCount.toLocaleString('el-GR')} ακμές· η προβολή μπορεί να είναι πιο αργή.</p>
             )}
-            {showHidden && openMesh && <p className="warning">Κρυφές γραμμές ίσως μη ακριβείς για ανοιχτά πλέγματα.</p>}
-            <button
-              type="button"
-              className={`secondary-button color-mode${colorMode ? ' on' : ''}`}
-              aria-pressed={colorMode}
-              onClick={() => setColorMode((c) => !c)}
-            >
-              Χρώματα όψεων: {colorMode ? 'ON' : 'OFF'}
-            </button>
+            {showHidden && openMesh && <p className="warning">Οι διακεκομμένες γραμμές ίσως δεν είναι ακριβείς για ανοιχτά πλέγματα.</p>}
             {colorMode && (
               <ul className="color-legend">
                 <li><i style={{ background: FACE_COLORS.top }} />Κάτοψη (πάνω)</li>

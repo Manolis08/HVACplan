@@ -1,7 +1,7 @@
 import { CameraControls, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import CameraControlsImpl from 'camera-controls';
-import { useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref, type RefObject } from 'react';
+import { useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref, type RefObject } from 'react';
 import {
   BufferAttribute,
   BufferGeometry,
@@ -9,6 +9,7 @@ import {
   DirectionalLight,
   DoubleSide,
   GreaterDepth,
+  Group,
   MeshStandardMaterial,
   Object3D,
   OrthographicCamera,
@@ -33,6 +34,11 @@ export interface ViewerApi {
   fit: () => void;
 }
 
+/** Εσωτερικό: και άμεση προσαρμογή της κάμερας στο τρέχον σχήμα (στη μέση της μετάβασης). */
+interface SceneApi extends ViewerApi {
+  snap: () => void;
+}
+
 interface ViewerProps {
   part: Part;
   scale: Scale;
@@ -42,6 +48,11 @@ interface ViewerProps {
   /** Χρωματισμός εδρών ανάλογα με την όψη στην οποία κοιτούν. */
   colorMode: boolean;
   theme: Theme;
+  /**
+   * Ταυτότητα του σχήματος και θέση του στη σειρά των έτοιμων σχημάτων (−1 για αρχείο).
+   * Όταν αλλάζει σχήμα, το παλιό γλιστράει έξω και το νέο μπαίνει από την πλευρά της σειράς.
+   */
+  shape: { key: string; index: number };
   onViewChange: (view: ViewId | null) => void;
   ref?: Ref<ViewerApi>;
 }
@@ -189,6 +200,117 @@ function PartMesh({ part, showHidden, colorMode }: { part: Part; showHidden: boo
 }
 
 /**
+ * Μετάβαση από σχήμα σε σχήμα σε δύο φάσεις: πρώτα φεύγει το παλιό με την κάμερά του, μετά η κάμερα
+ * προσαρμόζεται αμέσως στο νέο (εκτός οθόνης, δεν φαίνεται) και μπαίνει το νέο. Έτσι ένα μεγάλο σχήμα
+ * δεν «φουσκώνει» ούτε κόβεται όταν η κάμερα κάνει zoom για ένα μικρότερο.
+ */
+const SLIDE_OUT = 0.32;
+const SLIDE_IN = 0.38;
+const easeIn = (t: number) => t * t;
+const easeOut = (t: number) => 1 - (1 - t) ** 3;
+
+interface SlidingProps {
+  part: Part;
+  shape: { key: string; index: number };
+  showHidden: boolean;
+  colorMode: boolean;
+  /** true όσο διαρκεί η μετάβαση: η σκηνή δεν αλλάζει κάμερα μόνη της. */
+  slidingRef: RefObject<boolean>;
+  apiRef: RefObject<SceneApi | null>;
+  onSlidingChange: (sliding: boolean) => void;
+}
+
+/**
+ * Το τρέχον σχήμα, και όσο διαρκεί η μετάβαση και το προηγούμενο. Μετακινούνται κατά μήκος του
+ * «δεξιά» της κάμερας: προς τα εμπρός στη σειρά το νέο έρχεται από δεξιά και το παλιό φεύγει αριστερά.
+ */
+function SlidingParts({ part, shape, showHidden, colorMode, slidingRef, apiRef, onSlidingChange }: SlidingProps) {
+  const camera = useThree((s) => s.camera) as OrthographicCamera;
+  const invalidate = useThree((s) => s.invalidate);
+  const inRef = useRef<Group>(null);
+  const outRef = useRef<Group>(null);
+  const last = useRef({ part, shape });
+  // phase: 'out' = φεύγει το παλιό, 'in' = μπαίνει το νέο, null = ακίνητα
+  const anim = useRef<{ phase: 'out' | 'in' | null; t: number; dir: number }>({ phase: null, t: 0, dir: 0 });
+  const [outgoing, setOutgoing] = useState<{ part: Part; id: number } | null>(null);
+  const tmp = useMemo(() => new Vector3(), []);
+
+  /** Μετατόπιση κατά k πλάτη οθόνης προς τα «δεξιά» της κάμερας (θετικό = δεξιά για dir = 1). */
+  const shift = (g: Group | null, k: number) => {
+    if (!g) return;
+    const w = ((camera.right - camera.left) / camera.zoom) * anim.current.dir;
+    tmp.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+    g.position.copy(tmp).multiplyScalar(k * w);
+  };
+  const hideIncoming = (hidden: boolean) => {
+    if (inRef.current) inRef.current.visible = !hidden;
+  };
+
+  // Πριν ζωγραφιστεί το νέο σχήμα: το βάζουμε ήδη έξω από την οθόνη, ώστε να μην «αναβοσβήσει».
+  useLayoutEffect(() => {
+    const prev = last.current;
+    last.current = { part, shape };
+    if (prev.shape.key === shape.key) return;
+    const dir = prev.shape.index < 0 || shape.index < 0 ? 0 : Math.sign(shape.index - prev.shape.index);
+    if (!dir || reducedMotion()) return;
+    // ήδη φεύγει ένα σχήμα (γρήγορα διαδοχικά κλικ): συνεχίζει να φεύγει, απλώς θα μπει το νεότερο
+    if (anim.current.phase === 'out') {
+      hideIncoming(true);
+      return;
+    }
+    anim.current = { phase: 'out', t: 0, dir };
+    slidingRef.current = true;
+    setOutgoing({ part: prev.part, id: Date.now() });
+    onSlidingChange(true);
+    hideIncoming(true);
+    invalidate();
+  }, [part, shape.key]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useFrame((_, delta) => {
+    const a = anim.current;
+    if (!a.phase) return;
+    const dt = Math.min(delta, 1 / 30);
+    if (a.phase === 'out') {
+      a.t = Math.min(1, a.t + dt / SLIDE_OUT);
+      shift(outRef.current, -easeIn(a.t));
+      if (a.t >= 1) {
+        // το παλιό βγήκε: κάμερα αμέσως στο νέο σχήμα, το νέο ξεκινά από την άλλη πλευρά
+        setOutgoing(null);
+        apiRef.current?.snap();
+        camera.updateMatrixWorld();
+        a.phase = 'in';
+        a.t = 0;
+        shift(inRef.current, 1);
+        hideIncoming(false);
+      }
+    } else {
+      a.t = Math.min(1, a.t + dt / SLIDE_IN);
+      shift(inRef.current, 1 - easeOut(a.t));
+      if (a.t >= 1) {
+        inRef.current?.position.set(0, 0, 0);
+        a.phase = null;
+        slidingRef.current = false;
+        onSlidingChange(false);
+      }
+    }
+    invalidate();
+  });
+
+  return (
+    <>
+      <group ref={inRef}>
+        <PartMesh part={part} showHidden={showHidden} colorMode={colorMode} />
+      </group>
+      {outgoing && (
+        <group ref={outRef} key={outgoing.id}>
+          <PartMesh part={outgoing.part} showHidden={showHidden} colorMode={colorMode} />
+        </group>
+      )}
+    </>
+  );
+}
+
+/**
  * Κρυφές ακμές: οι ίδιες ακμές σχεδιάζονται ξανά, διακεκομμένες, ΜΟΝΟ όπου υπάρχει επιφάνεια
  * μπροστά τους (έλεγχος βάθους «μεγαλύτερο από» ανά pixel στην κάρτα γραφικών). Έτσι πιάνονται
  * και ακμές που κρύβονται πίσω από άλλο κομμάτι υλικού, όχι μόνο οι «πίσω» έδρες.
@@ -224,7 +346,34 @@ function HiddenEdges({ edges, show, onHidden }: { edges: Float32Array; show: boo
     // Αντίγραφα των πλήρων ακμών και αποστάσεων: από αυτά υπολογίζεται κάθε ενδιάμεσο καρέ.
     const pos = (g.getAttribute('instanceStart') as unknown as { data: { array: Float32Array; needsUpdate: boolean } }).data;
     const dist = (g.getAttribute('instanceDistanceStart') as unknown as { data: { array: Float32Array; needsUpdate: boolean } }).data;
-    return { line: l, pos, dist, fullPos: pos.array.slice(), fullDist: dist.array.slice() };
+    // Φάση παύλας από τη θέση στον χώρο (προβολή πάνω στη διεύθυνση της ακμής), όχι από το συνολικό
+    // μήκος: ακμές που πέφτουν η μία πάνω στην άλλη στην οθόνη (π.χ. μπρος και πίσω τοίχωμα εγκοπής
+    // σε κύρια όψη) έχουν τις παύλες στο ίδιο σημείο, αλλιώς η μία γέμιζε τα κενά της άλλης και
+    // η γραμμή έδειχνε συνεχής.
+    const fullPos = pos.array.slice();
+    const fullDist = new Float32Array(dist.array.length);
+    for (let i = 0; i < fullPos.length / 6; i++) {
+      const o = i * 6;
+      let dx = fullPos[o + 3] - fullPos[o];
+      let dy = fullPos[o + 4] - fullPos[o + 1];
+      let dz = fullPos[o + 5] - fullPos[o + 2];
+      const len = Math.hypot(dx, dy, dz) || 1;
+      dx /= len;
+      dy /= len;
+      dz /= len;
+      // ίδια φορά για παράλληλες ακμές, όποια κι αν είναι η σειρά των άκρων τους
+      const e = 1e-6;
+      if (dx < -e || (Math.abs(dx) <= e && (dy < -e || (Math.abs(dy) <= e && dz < 0)))) {
+        dx = -dx;
+        dy = -dy;
+        dz = -dz;
+      }
+      fullDist[i * 2] = fullPos[o] * dx + fullPos[o + 1] * dy + fullPos[o + 2] * dz;
+      fullDist[i * 2 + 1] = fullPos[o + 3] * dx + fullPos[o + 4] * dy + fullPos[o + 5] * dz;
+    }
+    dist.array.set(fullDist);
+    dist.needsUpdate = true;
+    return { line: l, pos, dist, fullPos, fullDist };
   }, [edges]);
   const { line } = built;
 
@@ -286,12 +435,13 @@ interface ControllerProps {
   part: Part;
   scale: Scale;
   dimsMode: DimsMode;
-  apiRef: RefObject<ViewerApi | null>;
+  apiRef: RefObject<SceneApi | null>;
+  slidingRef: RefObject<boolean>;
   overlayRef: RefObject<SVGGElement | null>;
   onViewChange: (view: ViewId | null) => void;
 }
 
-function SceneController({ part, scale, dimsMode, apiRef, overlayRef, onViewChange }: ControllerProps) {
+function SceneController({ part, scale, dimsMode, apiRef, slidingRef, overlayRef, onViewChange }: ControllerProps) {
   const camera = useThree((s) => s.camera) as OrthographicCamera;
   // Ο έλεγχος κάμερας (makeDefault) μπαίνει στο store μετά την πρώτη απόδοση.
   const controls = useThree((s) => s.controls) as unknown as CameraControlsImpl | null;
@@ -351,15 +501,25 @@ function SceneController({ part, scale, dimsMode, apiRef, overlayRef, onViewChan
     fit: () => {
       if (controls) placeRef.current(currentDir(), true);
     },
+    snap: () => {
+      applyClipRef.current();
+      if (controls) placeRef.current(currentDir(), false);
+    },
   }));
 
-  // Κοντινό/μακρινό επίπεδο κάμερας ανάλογα με το μέγεθος του κομματιού.
-  useEffect(() => {
+  // Κοντινό/μακρινό επίπεδο κάμερας ανάλογα με το μέγεθος του κομματιού. Στη μετάβαση εφαρμόζεται
+  // στο snap, αλλιώς το προηγούμενο (ίσως μεγαλύτερο) σχήμα θα κοβόταν όσο φεύγει.
+  const applyClip = () => {
     camera.near = Math.max(0.01, metrics.distance - metrics.diag * 1.5);
     camera.far = metrics.distance + metrics.diag * 1.5;
     camera.updateProjectionMatrix();
     invalidate();
-  }, [camera, metrics, invalidate]);
+  };
+  const applyClipRef = useRef(applyClip);
+  applyClipRef.current = applyClip;
+  useEffect(() => {
+    if (!slidingRef.current) applyClipRef.current();
+  }, [camera, metrics, slidingRef]);
 
   // Αρχική ισομετρική χωρίς κίνηση· μετά, σε αλλαγή μεγέθους κομματιού ή παραθύρου,
   // ξαναχωράει το μοντέλο κρατώντας την τρέχουσα όψη.
@@ -370,10 +530,11 @@ function SceneController({ part, scale, dimsMode, apiRef, overlayRef, onViewChan
     if (!s.initialised) {
       s.initialised = true;
       placeRef.current(viewBasis(viewById('iso').dir).dir, false);
-    } else {
+    } else if (!slidingRef.current) {
+      // (στη μετάβαση η κάμερα προσαρμόζεται στο snap)
       placeRef.current(currentDir(), true);
     }
-  }, [controls, bboxKey, size.width, size.height]);
+  }, [controls, bboxKey, size.width, size.height, slidingRef]);
 
   useEffect(() => {
     const c = controls;
@@ -479,8 +640,11 @@ function SceneController({ part, scale, dimsMode, apiRef, overlayRef, onViewChan
   );
 }
 
-export function Viewer({ part, scale, dimsMode, showHidden, colorMode, theme, onViewChange, ref }: ViewerProps) {
-  const apiRef = useRef<ViewerApi | null>(null);
+export function Viewer({ part, scale, dimsMode, showHidden, colorMode, theme, shape, onViewChange, ref }: ViewerProps) {
+  const apiRef = useRef<SceneApi | null>(null);
+  const slidingRef = useRef(false);
+  // Όσο γλιστράνε τα σχήματα, οι διαστάσεις κρύβονται (θα έδειχναν στη λάθος θέση).
+  const [sliding, setSliding] = useState(false);
   const overlayRef = useRef<SVGGElement | null>(null);
 
   useImperativeHandle(ref, () => ({
@@ -499,12 +663,21 @@ export function Viewer({ part, scale, dimsMode, showHidden, colorMode, theme, on
       >
         <color attach="background" args={[theme === 'dark' ? '#141c24' : '#f4f6f8']} />
         <CameraControls makeDefault />
-        <PartMesh part={part} showHidden={showHidden} colorMode={colorMode} />
+        <SlidingParts
+          part={part}
+          shape={shape}
+          showHidden={showHidden}
+          colorMode={colorMode}
+          slidingRef={slidingRef}
+          apiRef={apiRef}
+          onSlidingChange={setSliding}
+        />
         <SceneController
           part={part}
           scale={scale}
           dimsMode={dimsMode}
           apiRef={apiRef}
+          slidingRef={slidingRef}
           overlayRef={overlayRef}
           onViewChange={onViewChange}
         />
@@ -517,7 +690,7 @@ export function Viewer({ part, scale, dimsMode, showHidden, colorMode, theme, on
           />
         </GizmoHelper>
       </Canvas>
-      <svg className="dims-overlay" aria-hidden="true">
+      <svg className={`dims-overlay${sliding ? ' sliding' : ''}`} aria-hidden="true">
         <g ref={overlayRef} />
       </svg>
     </div>

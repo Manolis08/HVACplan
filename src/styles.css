@@ -1207,8 +1207,15 @@ select:focus-visible {
   }
 }
 
+.toggle-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 2px 0 4px;
+}
+
 .color-mode {
-  margin: 6px 0 4px;
+  margin: 0;
 }
 
 .color-mode.on {
@@ -1542,4 +1549,14 @@ body,
     opacity: 1;
     transform: none;
   }
+}
+
+/* Διαστάσεις: σβήνουν όσο αλλάζει το σχήμα και εμφανίζονται ομαλά όταν σταθεί. */
+.dims-overlay {
+  transition: opacity 220ms ease;
+}
+
+.dims-overlay.sliding {
+  opacity: 0;
+  transition: none;
 }
