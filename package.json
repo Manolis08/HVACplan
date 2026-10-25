@@ -1,0 +1,37 @@
+{
+  "name": "opseis-3d",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc",
+    "samples": "GEN_SAMPLES=1 vitest run src/io/samples.gen.test.ts",
+    "icons": "node scripts/make-icons.mjs"
+  },
+  "dependencies": {
+    "@fontsource/noto-sans": "^5.3.0",
+    "@react-three/drei": "^10.7.9",
+    "@react-three/fiber": "^9.8.2",
+    "camera-controls": "^3.1.2",
+    "opentype.js": "^2.0.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@types/draco3d": "^1.4.10",
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.186.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "draco3d": "^1.5.7",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  }
+}

@@ -1,0 +1,1188 @@
+:root {
+  --bg: #eef1f4;
+  --panel: #ffffff;
+  --text: #17212b;
+  --muted: #5b6875;
+  --border: #d3dae1;
+  --accent: #1f5fae;
+  --accent-weak: #e4eefa;
+  --danger: #b42318;
+  --danger-weak: #fdeceb;
+  --dim: #0b57a4;
+  --icon-fill: #dfe7ef;
+  --radius: 10px;
+  --header-bg: #17212b;
+  --viewer-bg: #f4f6f8;
+  --chip-bg: rgba(255, 255, 255, 0.92);
+  --label-halo: #ffffff;
+  --input-bg: #ffffff;
+  --surface-2: #f3f5f7;
+  --danger-border: #f3b8b3;
+  --warn-bg: #fff6e0;
+  --warn-text: #8a5a00;
+  --warn-border: #f0d58a;
+  --ok: #1d7a3c;
+  --empty-overlay: rgba(244, 246, 248, 0.96);
+  --sheet-bg: #e3e8ed;
+  color-scheme: light;
+}
+
+/* Σκοτεινό θέμα (προεπιλογή). Το φύλλο όψεων μένει λευκό σαν χαρτί. */
+:root[data-theme='dark'] {
+  --bg: #0f151b;
+  --panel: #18212a;
+  --text: #e6edf3;
+  --muted: #9aa8b6;
+  --border: #2c3a47;
+  --accent: #4c94e8;
+  --accent-weak: #1c2f45;
+  --danger: #ff8a80;
+  --danger-weak: #3a1d1d;
+  --dim: #7cc0ff;
+  --icon-fill: #2a3846;
+  --header-bg: #0a0f14;
+  --viewer-bg: #141c24;
+  --chip-bg: rgba(24, 33, 42, 0.92);
+  --label-halo: #141c24;
+  --input-bg: #10171e;
+  --surface-2: #1f2a35;
+  --danger-border: #6b2a2a;
+  --warn-bg: #3a2f12;
+  --warn-text: #f3cf7a;
+  --warn-border: #6d5a20;
+  --ok: #6fd897;
+  --empty-overlay: rgba(20, 28, 36, 0.96);
+  --sheet-bg: #0b1016;
+  color-scheme: dark;
+}
+
+.theme-toggle {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 999px;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', Arial, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ---------- Διάταξη ---------- */
+.app {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 16px;
+  padding-top: env(safe-area-inset-top);
+  min-height: 48px;
+  background: var(--header-bg);
+  color: #fff;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.header-note {
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+
+.app-main {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(320px, 380px) 1fr;
+}
+
+.side-pane {
+  order: 0;
+  overflow-y: auto;
+  padding: 12px 12px calc(16px + env(safe-area-inset-bottom));
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.viewer-pane {
+  order: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.viewer {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: var(--viewer-bg);
+  overflow: hidden;
+}
+
+.viewer-canvas,
+.dims-overlay {
+  position: absolute;
+  inset: 0;
+}
+
+.viewer-canvas {
+  touch-action: none;
+}
+
+.dims-overlay {
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+@media (max-width: 899px) {
+  .app-main {
+    display: flex;
+    flex-direction: column;
+  }
+  .viewer-pane {
+    order: 0;
+    flex: 0 0 auto;
+    height: 54dvh;
+    min-height: 280px;
+    border-bottom: 1px solid var(--border);
+  }
+  .side-pane {
+    order: 1;
+    flex: 1;
+    border-right: 0;
+    padding: 12px 12px calc(16px + env(safe-area-inset-bottom));
+  }
+}
+
+/* ---------- Διαστάσεις πάνω στο 3D ---------- */
+.dims-overlay .dim-ext,
+.dims-overlay .dim-line {
+  fill: none;
+  stroke: var(--dim);
+  stroke-width: 1;
+}
+
+.dims-overlay .dim-arrow {
+  fill: var(--dim);
+}
+
+.dims-overlay .dim-label {
+  fill: var(--dim);
+  font-size: 13px;
+  font-weight: 650;
+  paint-order: stroke;
+  stroke: var(--label-halo);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Ενδείξεις πάνω στην προβολή ---------- */
+.chip {
+  position: absolute;
+  top: 10px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--chip-bg);
+  border: 1px solid var(--border);
+  font-size: 0.85rem;
+  line-height: 1.25;
+  pointer-events: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.chip-view {
+  left: 10px;
+}
+
+.chip-scale {
+  right: 10px;
+  text-align: right;
+}
+
+.chip-sub {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.stale-banner {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--danger-weak);
+  color: var(--danger);
+  border: 1px solid var(--danger-border);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+/* ---------- Γραμμή όψεων ---------- */
+.view-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  overflow-x: auto;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  scrollbar-width: thin;
+}
+
+.view-button {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--input-bg);
+  cursor: pointer;
+  font-size: 0.95rem;
+  white-space: nowrap;
+}
+
+.view-button:hover {
+  border-color: var(--accent);
+}
+
+.view-button[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.view-button.fit {
+  margin-left: auto;
+  color: var(--accent);
+  border-style: dashed;
+}
+
+/* ---------- Κάρτες πλαϊνής στήλης ---------- */
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+
+.card h2 {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.hint,
+.form-note {
+  margin: 8px 0 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.form-note {
+  margin: 12px 0 8px;
+}
+
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 6px;
+}
+
+.template-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 6px;
+  min-height: 76px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--input-bg);
+  cursor: pointer;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  text-align: center;
+  color: var(--text);
+}
+
+.template-card[aria-checked='true'] {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  font-weight: 600;
+}
+
+.template-card[aria-checked='true'] svg {
+  color: var(--accent);
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 0.92rem;
+  min-height: 32px;
+}
+
+.toggle input {
+  width: 20px;
+  height: 20px;
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 10px;
+}
+
+.field label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-bottom: 4px;
+  min-height: 2.3em;
+  line-height: 1.15;
+}
+
+.axis-tag {
+  flex: 0 0 auto;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.input-wrap {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--input-bg);
+  overflow: hidden;
+}
+
+.input-wrap:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-weak);
+}
+
+.input-wrap.invalid {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-weak);
+}
+
+.input-wrap.locked {
+  background: var(--surface-2);
+}
+
+.input-wrap input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  padding: 8px 10px;
+  font-size: 16px; /* χωρίς αυτόματο zoom στο iPhone */
+  background: transparent;
+  font-variant-numeric: tabular-nums;
+}
+
+.unit {
+  padding: 0 10px 0 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.field-hint {
+  margin: 3px 0 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.field-error {
+  margin: 4px 0 0;
+  font-size: 0.8rem;
+  color: var(--danger);
+  line-height: 1.3;
+}
+
+.issues {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--danger-weak);
+  border: 1px solid var(--danger-border);
+  color: var(--danger);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.issues p {
+  margin: 0;
+}
+
+.issues p + p {
+  margin-top: 6px;
+}
+
+.info {
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-size: 0.83rem;
+}
+
+.info div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.info dt {
+  color: var(--muted);
+}
+
+.info dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.link-button {
+  margin-top: 10px;
+  padding: 6px 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 0.85rem;
+  text-decoration: underline;
+}
+
+/* ---------- Επιλογές ---------- */
+select {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--input-bg);
+  font-size: 16px;
+}
+
+.segmented {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.segmented button {
+  flex: 1;
+  min-height: 40px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: var(--input-bg);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.segmented button:last-child {
+  border-right: 0;
+}
+
+.segmented button[aria-checked='true'] {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.custom-scale {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.custom-n {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.custom-n input {
+  width: 110px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 16px;
+}
+
+.custom-n input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.projection-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.projection-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--input-bg);
+  cursor: pointer;
+  text-align: left;
+  color: var(--muted);
+}
+
+.projection-option span {
+  display: flex;
+  flex-direction: column;
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.projection-option small {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.projection-option[aria-checked='true'] {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  color: var(--accent);
+}
+
+button:focus-visible,
+select:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ---------- Αρχείο 3D ---------- */
+.mode-switch {
+  margin-bottom: 12px;
+}
+
+.primary-button,
+.secondary-button {
+  min-height: 42px;
+  padding: 0 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.primary-button {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.primary-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.secondary-button {
+  border: 1px solid var(--border);
+  background: var(--input-bg);
+  font-weight: 500;
+  font-size: 0.88rem;
+  padding: 0 10px;
+}
+
+.drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 12px;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  text-align: center;
+}
+
+.drop-zone.compact {
+  padding: 0;
+  border: 0;
+  background: none;
+  align-items: flex-start;
+}
+
+.drop-title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+  font-size: 0.92rem;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--accent-weak);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.issues details {
+  margin-top: 6px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.issues code {
+  display: block;
+  margin-top: 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.file-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 12px 0 4px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.file-summary strong {
+  color: var(--text);
+  font-size: 0.95rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.warning {
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--warn-bg);
+  color: var(--warn-text);
+  font-size: 0.8rem;
+}
+
+.file-step {
+  margin: 12px 0 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.file-step legend {
+  padding: 0;
+  margin-bottom: 6px;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.unit-table {
+  width: 100%;
+  margin-top: 6px;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.unit-table th,
+.unit-table td {
+  padding: 4px 8px;
+  text-align: left;
+  font-weight: 400;
+}
+
+.unit-table th {
+  color: var(--muted);
+  white-space: nowrap;
+  width: 1%;
+}
+
+.unit-table tr.selected {
+  background: var(--accent-weak);
+  font-weight: 700;
+}
+
+.unit-table tr.selected th,
+.unit-table tr.selected td {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.rotate-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.rotate-buttons .link-button {
+  margin: 0 0 0 4px;
+}
+
+.confirm-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.confirm-row .hint {
+  margin: 0;
+}
+
+.confirmed {
+  margin-top: 14px;
+  font-size: 0.88rem;
+}
+
+.confirmed > p {
+  margin: 0;
+  color: var(--ok);
+}
+
+.file-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.file-actions .link-button {
+  margin: 0;
+}
+
+.info-banner {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--warn-bg);
+  color: var(--warn-text);
+  border: 1px solid var(--warn-border);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.viewer-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px;
+  background: var(--empty-overlay);
+  text-align: center;
+}
+
+.viewer-empty > p {
+  margin: 0;
+  font-weight: 600;
+}
+
+.viewer-empty .drop-zone {
+  max-width: 360px;
+}
+
+.drag-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: rgba(31, 95, 174, 0.88);
+  color: #fff;
+  pointer-events: none;
+}
+
+.drag-overlay p {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+/* ---------- Ειδοποίηση PWA ---------- */
+.pwa-banner {
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 20;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  padding: 10px 12px 10px 16px;
+  border-radius: 10px;
+  background: #17212b;
+  color: #fff;
+  font-size: 0.9rem;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+}
+
+.pwa-banner .link-button {
+  margin: 0;
+  color: #cfd8e3;
+  text-decoration: none;
+  font-size: 1rem;
+}
+
+.sign-button {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  margin-right: 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+/* ---------- 3D / Φύλλο όψεων ---------- */
+.pane-switch {
+  flex: 0 0 auto;
+  margin: 8px;
+  max-width: 320px;
+}
+
+.viewer[hidden] {
+  display: none;
+}
+
+.field-label {
+  margin: 12px 0 6px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.sheet-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--sheet-bg);
+}
+
+.sheet-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.sheet-page {
+  width: 100%;
+  max-width: 1100px; /* A3 οριζόντιο */
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+  background: #fff;
+}
+
+.sheet-page svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.sheet-message {
+  max-width: 420px;
+  margin: 40px auto;
+  text-align: center;
+  color: var(--muted);
+}
+
+.sheet-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+}
+
+.toggle.compact {
+  margin: 0;
+}
+
+.warning.inline {
+  margin: 0;
+}
+
+.export-buttons {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.title-block-form {
+  flex: 0 0 auto;
+  padding: 8px 12px 10px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+.title-block-form summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.tb-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.tb-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.tb-field input {
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--input-bg);
+  font-size: 16px;
+}
+
+/* Κινητό + φύλλο όψεων: κυλάει όλη η σελίδα, ώστε το φύλλο να έχει το πλάτος της οθόνης. */
+@media (max-width: 899px) {
+  .app-main.sheet-mode {
+    display: block;
+    overflow-y: auto;
+  }
+  .app-main.sheet-mode .viewer-pane {
+    height: auto;
+    min-height: 0;
+  }
+  .app-main.sheet-mode .sheet-scroll {
+    flex: none;
+    overflow: visible;
+    padding: 8px;
+  }
+  .app-main.sheet-mode .side-pane {
+    overflow: visible;
+  }
+}
+
+.color-mode {
+  margin: 6px 0 4px;
+}
+
+.color-mode.on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.color-legend {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 12px;
+  margin: 6px 0 8px;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.color-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.color-legend i {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+}
+
+/* ---------- Έτοιμα σχήματα: σειρά και μετονομασία ---------- */
+.template-item {
+  position: relative;
+}
+
+.template-item .template-card {
+  width: 100%;
+  height: 100%;
+  padding-top: 14px;
+}
+
+.template-item.dragging {
+  opacity: 0.6;
+}
+
+.template-item.dragging .template-card {
+  border-style: dashed;
+  border-color: var(--accent);
+}
+
+.card-tool {
+  position: absolute;
+  top: 2px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.card-tool:hover,
+.card-tool:focus-visible {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.drag-handle {
+  left: 2px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.template-item.dragging .drag-handle {
+  cursor: grabbing;
+}
+
+.rename {
+  right: 2px;
+}
+
+.template-card.editing {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 26px 6px 6px;
+}
+
+.template-card.editing input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--input-bg);
+  font-size: 16px;
+}
+
+.template-card.editing .link-button {
+  margin: 0;
+  font-size: 0.75rem;
+}

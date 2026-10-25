@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<rect width="64" height="64" rx="14" fill="rgb(23,33,43)"/>
+<polygon points="17.10,19.07 23.81,22.94 38.73,14.33 32.02,10.45" fill="rgb(236,241,246)" stroke="rgb(23,33,43)" stroke-width="0.8" stroke-linejoin="round"/>
+<polygon points="23.81,34.14 32.76,39.31 39.48,35.44 30.53,30.27" fill="rgb(236,241,246)" stroke="rgb(23,33,43)" stroke-width="0.8" stroke-linejoin="round"/>
+<polygon points="17.10,30.27 23.81,34.14 23.81,22.94 17.10,19.07" fill="rgb(176,192,208)" stroke="rgb(23,33,43)" stroke-width="0.8" stroke-linejoin="round"/>
+<polygon points="23.81,34.14 30.53,30.27 30.53,19.07 23.81,22.94" fill="rgb(129,149,170)" stroke="rgb(23,33,43)" stroke-width="0.8" stroke-linejoin="round"/>
+<polygon points="17.10,36.30 39.48,49.22 39.48,43.19 17.10,30.27" fill="rgb(176,192,208)" stroke="rgb(23,33,43)" stroke-width="0.8" stroke-linejoin="round"/>
+<polygon points="30.53,30.27 39.48,35.44 39.48,24.24 30.53,19.07" fill="rgb(176,192,208)" stroke="rgb(23,33,43)" stroke-width="0.8" stroke-linejoin="round"/>
+<polygon points="30.53,19.07 39.48,24.24 47.69,19.50 38.73,14.33" fill="rgb(236,241,246)" stroke="rgb(23,33,43)" stroke-width="0.8" stroke-linejoin="round"/>
+<polygon points="39.48,49.22 54.40,40.60 54.40,23.37 39.48,31.99" fill="rgb(129,149,170)" stroke="rgb(23,33,43)" stroke-width="0.8" stroke-linejoin="round"/>
+<polygon points="32.76,28.11 39.48,31.99 54.40,23.37 47.69,19.50" fill="rgb(236,241,246)" stroke="rgb(23,33,43)" stroke-width="0.8" stroke-linejoin="round"/>
+<polygon points="32.76,39.31 39.48,43.19 39.48,31.99 32.76,28.11" fill="rgb(176,192,208)" stroke="rgb(23,33,43)" stroke-width="0.8" stroke-linejoin="round"/>
+<polygon points="11.47,39.55 33.85,52.47 34.67,52.00 12.29,39.07" fill="rgb(92,168,255)"/>
+<polygon points="15.57,36.71 16.39,37.18 10.42,40.63 9.60,40.15" fill="rgb(92,168,255)"/>
+<polygon points="37.95,49.63 38.77,50.10 32.80,53.55 31.98,53.07" fill="rgb(92,168,255)"/>
+<polygon points="11.88,39.31 13.96,42.41 17.25,40.52" fill="rgb(92,168,255)"/>
+<polygon points="34.26,52.23 32.17,49.13 28.89,51.03" fill="rgb(92,168,255)"/>
+</svg>
