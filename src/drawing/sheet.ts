@@ -3,7 +3,7 @@
 import { applyScale, ONE_TO_ONE, SCALE_PRESETS, scaleLabel, type Scale } from '../lib/scale';
 import type { DimSpec, Part, Vec3 } from '../model/types';
 import type { ProjectionAngle } from '../ui/ProjectionSymbol';
-import { layoutDims, PAPER_STYLE } from '../viewer/dimLayout';
+import { essentialDims, layoutDims, PAPER_STYLE } from '../viewer/dimLayout';
 import { bboxCorners, viewBasis, viewById, type ViewId } from '../viewer/views';
 import type { ViewFrame } from './hlr';
 import { edgeTopology, projectView, silhouettes, type EdgeTopology, type Segment2 } from './hlr';
@@ -320,10 +320,16 @@ export function sheetSvg(views: SheetView[], part: Part, o: SheetOptions): Sheet
   let hidden = '';
   let centers = '';
   let dims = '';
-  const assigned = assignDims(part.dims, views);
+  // Στο φύλλο μόνο οι απαραίτητες διαστάσεις: όσες βγαίνουν με πρόσθεση/αφαίρεση άλλων παραλείπονται.
+  const assigned = assignDims(essentialDims(part.dims), views);
   const corners = bboxCorners(part.bbox);
+  const paperSegs = new Map<SheetView, number[][]>();
   for (const [v, box] of boxes) {
     const toPaper = (p: [number, number]): [number, number] => [box.x + k * (p[0] - v.minU), box.y + k * (v.maxV - p[1])];
+    paperSegs.set(
+      v,
+      v.segments.filter((sg) => !sg.hidden).map((sg) => [...toPaper(sg.a), ...toPaper(sg.b)]),
+    );
     const P = (p: [number, number]) => {
       const q = toPaper(p);
       return `${f2(q[0])} ${f2(q[1])}`;
@@ -358,9 +364,32 @@ export function sheetSvg(views: SheetView[], part: Part, o: SheetOptions): Sheet
     const [ty0, ty1] = [topBox.y, topBox.y + k * ht];
     const [vy0, vy1] = first ? [fy1, ty0] : [ty1, fy0];
     const sx0 = sideBox.x;
+    // Κάθε γραμμή προβολής ξεκινά από το πραγματικό σημείο του σχεδίου στη μία όψη και φτάνει ως το
+    // σχέδιο της άλλης (όχι από το νοητό κουτί γύρω του): π.χ. η πάνω γραμμή του εξαρτήματος
+    // ακουμπά την κορυφή του στρογγυλού μέρους. Αν δεν βρεθεί σημείο, μένει η θέση του κουτιού.
+    // ανοχή 0,3 mm χαρτιού: τα τόξα είναι πολύγωνα και η κορυφή τους πέφτει λίγο μέσα από το κουτί
+    const eps = 0.3;
+    /** Τα x όπου οι ορατές γραμμές μιας όψης συναντούν την οριζόντια y (και τα y για κάθετη x). */
+    const hits = (v: SheetView, at: number, horizontal: boolean): number[] => {
+      const out: number[] = [];
+      for (const [ax, ay, bx, by] of paperSegs.get(v) ?? []) {
+        const [a1, a2, b1, b2] = horizontal ? [ay, ax, by, bx] : [ax, ay, bx, by];
+        if (at < Math.min(a1, b1) - eps || at > Math.max(a1, b1) + eps) continue;
+        if (Math.abs(b1 - a1) < eps) out.push(a2, b2);
+        else out.push(a2 + ((at - a1) / (b1 - a1)) * (b2 - a2));
+      }
+      return out;
+    };
+    const ext = (vals: number[], pick: 'min' | 'max', fallback: number) =>
+      vals.length ? (pick === 'min' ? Math.min(...vals) : Math.max(...vals)) : fallback;
+    const upper = first ? front : top;
+    const lower = first ? top : front;
+    const vLine = (x: number) =>
+      `M${f2(x)} ${f2(ext(hits(upper, x, false), 'max', vy0))}V${f2(ext(hits(lower, x, false), 'min', vy1))}`;
+    const hLine = (y: number) =>
+      `M${f2(ext(hits(front, y, true), 'max', fx1))} ${f2(y)}H${f2(ext(hits(side, y, true), 'min', sx0))}`;
     projLines =
-      `<path d="M${f2(fx0)} ${f2(vy0)}V${f2(vy1)}M${f2(fx1)} ${f2(vy0)}V${f2(vy1)}` +
-      `M${f2(fx1)} ${f2(fy0)}H${f2(sx0)}M${f2(fx1)} ${f2(fy1)}H${f2(sx0)}" stroke="#9aa5b1" stroke-width="0.13" fill="none"/>`;
+      `<path d="${vLine(fx0)}${vLine(fx1)}${hLine(fy0)}${hLine(fy1)}" stroke="#9aa5b1" stroke-width="0.13" fill="none"/>`;
   }
 
   const svg = [

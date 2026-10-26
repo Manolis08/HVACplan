@@ -1807,3 +1807,41 @@ body {
 .sheet-exit:hover {
   background: rgba(0, 0, 0, 0.75);
 }
+
+/* ---------- Μπάρα φύλλου σε στενή οθόνη (όρθιο κινητό): πλέγμα δύο γραμμών χωρίς κενά ----------
+   1η γραμμή: οι δύο διακόπτες μισός-μισός. 2η: διάταξη, Υπόμνημα, Λήψη σε ίσα κομμάτια. */
+@media (max-width: 600px) {
+  .sheet-toolbar {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 6px;
+    padding: 8px 10px;
+  }
+  .sheet-options,
+  .sheet-actions {
+    display: contents;
+  }
+  .sheet-toolbar .pill {
+    grid-column: span 3;
+    justify-content: center;
+    min-height: 38px;
+    padding: 0 8px;
+  }
+  .sheet-toolbar .layout-switch,
+  .sheet-toolbar .sheet-actions > button,
+  .sheet-toolbar .menu-wrap {
+    grid-column: span 2;
+    min-width: 0;
+  }
+  .sheet-toolbar .layout-switch button {
+    min-height: 38px;
+    padding: 0 4px;
+  }
+  .sheet-toolbar .sheet-actions > button,
+  .sheet-toolbar .menu-wrap > button {
+    width: 100%;
+    min-height: 38px;
+    padding: 0 6px;
+    justify-content: center;
+  }
+}

@@ -163,3 +163,37 @@ describe('προτεινόμενη κλίμακα', () => {
     expect(s.kind === 'reduce' || s.n === 1).toBe(true);
   });
 });
+
+describe('φύλλο: μόνο οι απαραίτητες διαστάσεις', () => {
+  it('ΤΕΤΡΙΣ: χωρίς Ls (= L − P) και Hu (= Ht − Hs), με τις υπόλοιπες', () => {
+    const t = templateById('stepped-block');
+    const p = evaluate(t, defaultInputs(t), defaultToggles(t)).part!;
+    const svg = sheetSvg(computeSheetViews(p, 'first'), p, {
+      projection: 'first',
+      projectionLines: true,
+      scale: { kind: 'reduce', n: 1 },
+      fields: { title: '', author: '', section: '', classroom: '', drawingNo: '', school: '', date: '' },
+    }).svg;
+    expect(svg).not.toContain('data-dim="Ls"');
+    expect(svg).not.toContain('data-dim="Hu"');
+    for (const id of ['L', 'W', 'P', 'Hs']) expect(svg).toContain(`data-dim="${id}"`);
+  });
+});
+
+describe('γραμμές προβολής: από το αντικείμενο ως το αντικείμενο', () => {
+  it('ΕΞΑΡΤΙΜΑ: η πάνω γραμμή ξεκινά από την κορυφή του στρογγυλού μέρους, όχι από την άκρη του κουτιού', () => {
+    const t = templateById('bearing-block');
+    const p = evaluate(t, defaultInputs(t), defaultToggles(t)).part!;
+    const svg = sheetSvg(computeSheetViews(p, 'first'), p, {
+      projection: 'first',
+      projectionLines: true,
+      scale: { kind: 'reduce', n: 1 },
+      fields: { title: '', author: '', section: '', classroom: '', drawingNo: '', school: '', date: '' },
+    }).svg;
+    const d = svg.match(/<path d="([^"]*)" stroke="#9aa5b1"/)![1];
+    // τρίτη γραμμή = οριζόντια στο ύψος της κορυφής: ξεκινά κοντά στο κέντρο (x ≈ 110), όχι στο 160
+    const [, x] = d.match(/M[\d.]+ [\d.]+V[\d.]+M[\d.]+ [\d.]+V[\d.]+M([\d.]+) /)!.map(Number);
+    expect(x).toBeGreaterThan(100);
+    expect(x).toBeLessThan(125);
+  });
+});
