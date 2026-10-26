@@ -1617,3 +1617,193 @@ body,
   min-height: 0;
   overflow: auto;
 }
+
+/* ---------- Κύλιση: κυλάνε μόνο οι περιοχές της εφαρμογής, ποτέ ολόκληρη η σελίδα ----------
+   Στο iPhone, όταν μια λίστα φτάσει στο τέλος της, η κύλιση «περνούσε» στη σελίδα και ανέβαινε
+   όλη η οθόνη μαζί με την επικεφαλίδα. */
+html,
+body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+.side-pane,
+.sheet-scroll,
+.scale-popover,
+.app-main.sheet-mode {
+  overscroll-behavior: contain;
+}
+
+/* ---------- Κινητό σε οριζόντια θέση (landscape) ----------
+   Λίγο ύψος, πολύ πλάτος: όπως στον υπολογιστή, επιλογές αριστερά και προβολή δεξιά σε όλο το ύψος.
+   Οι άκρες αφήνουν χώρο για το «νησί» της κάμερας και τις στρογγυλεμένες γωνίες (safe area). */
+@media (orientation: landscape) and (max-height: 540px) {
+  .app-header {
+    min-height: 40px;
+    padding-left: max(16px, env(safe-area-inset-left));
+    padding-right: max(16px, env(safe-area-inset-right));
+  }
+  .app-header h1 {
+    font-size: 1.1rem;
+  }
+  .app-main,
+  .app-main.sheet-mode {
+    display: grid;
+    grid-template-columns: minmax(250px, 34%) 1fr;
+    overflow: hidden;
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+  .viewer-pane,
+  .app-main.sheet-mode .viewer-pane {
+    order: 1;
+    height: auto;
+    min-height: 0;
+    border-bottom: 0;
+  }
+  .side-pane,
+  .app-main.sheet-mode .side-pane {
+    order: 0;
+    overflow-y: auto;
+    border-right: 1px solid var(--border);
+    padding: 8px 8px calc(12px + env(safe-area-inset-bottom));
+  }
+  .app-main.sheet-mode .sheet-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+  }
+  .pane-header {
+    margin: 6px;
+  }
+  .pane-switch button,
+  .view-button {
+    min-height: 34px;
+  }
+  .fullscreen-button span {
+    display: none;
+  }
+  .view-toolbar {
+    padding: 6px;
+    padding-bottom: max(6px, env(safe-area-inset-bottom));
+  }
+}
+
+@media (orientation: landscape) and (max-height: 540px) {
+  /* πιο λεπτή επικεφαλίδα: κάθε pixel ύψους πάει στο 3D */
+  .app-header {
+    min-height: 34px;
+  }
+  .header-note {
+    display: none;
+  }
+  .header-right button {
+    min-height: 28px;
+    padding: 0 10px;
+    font-size: 0.8rem;
+  }
+  .app-main,
+  .app-main.sheet-mode {
+    grid-template-columns: minmax(280px, 38%) 1fr;
+  }
+  .side-pane .segmented button {
+    font-size: 0.82rem;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 540px) {
+  /* μπάρα φύλλου πιο μικρή, ώστε να μένει χώρος για το φύλλο */
+  .sheet-toolbar {
+    gap: 6px;
+    padding: 5px 8px;
+  }
+  .pill,
+  .layout-switch button,
+  .sheet-actions .primary-button,
+  .sheet-actions .secondary-button {
+    min-height: 30px;
+    font-size: 0.78rem;
+  }
+  .layout-switch {
+    min-width: 120px;
+  }
+  .sheet-scroll {
+    padding: 6px;
+  }
+}
+
+/* ---------- Πλήρης οθόνη φύλλου: μόνο το χαρτί A3, ολόκληρο ----------
+   Σε όρθια οθόνη το χαρτί γυρίζει 90°, ώστε να φαίνεται οριζόντια και να πιάνει όλη την οθόνη. */
+.viewer-pane.sheet-full {
+  --pad: 12px;
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  height: auto !important;
+  background: #2a2f35;
+}
+
+.viewer-pane.sheet-full .pane-header,
+.viewer-pane.sheet-full .sheet-toolbar,
+.viewer-pane.sheet-full .sheet-warnings,
+.viewer-pane.sheet-full .title-block-form {
+  display: none;
+}
+
+.viewer-pane.sheet-full .sheet-pane {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  animation: none;
+}
+
+.viewer-pane.sheet-full .sheet-scroll {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 0;
+}
+
+.viewer-pane.sheet-full .sheet-page {
+  flex: none;
+  max-width: none;
+  animation: none;
+  /* το μεγαλύτερο A3 (420 × 297) που χωρά στην οθόνη */
+  width: min(
+    100dvw - 2 * var(--pad) - env(safe-area-inset-left) - env(safe-area-inset-right),
+    (100dvh - 2 * var(--pad) - env(safe-area-inset-top) - env(safe-area-inset-bottom)) * 420 / 297
+  );
+}
+
+@media (orientation: portrait) {
+  .viewer-pane.sheet-full .sheet-page {
+    width: min(
+      100dvh - 2 * var(--pad) - env(safe-area-inset-top) - env(safe-area-inset-bottom),
+      (100dvw - 2 * var(--pad)) * 420 / 297
+    );
+    transform: rotate(90deg);
+  }
+}
+
+.sheet-exit {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top));
+  right: max(10px, env(safe-area-inset-right));
+  z-index: 2;
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 1.1rem;
+  cursor: pointer;
+  animation: fade-in var(--dur) var(--ease-out) both;
+}
+
+.sheet-exit:hover {
+  background: rgba(0, 0, 0, 0.75);
+}

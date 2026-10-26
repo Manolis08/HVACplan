@@ -66,11 +66,16 @@ function partMetrics(part: Part) {
 
 function fitMargin(width: number, height: number, mode: DimsMode) {
   if (mode === 'none') return 24;
-  return Math.min(110, Math.max(64, 0.18 * Math.min(width, height)));
+  // σε μικρή προβολή (π.χ. κινητό οριζόντια) μικρότερο περιθώριο, αλλιώς το σχήμα γίνεται μικροσκοπικό
+  const m = Math.min(width, height);
+  return Math.min(110, Math.max(m < 360 ? 40 : 64, 0.18 * m));
 }
 
 /** Χρώματα όψεων: κάτοψη (+Z) πράσινο, πρόσοψη (−Y) κόκκινο, πλάγια (−X) μπλε, υπόλοιπα κίτρινο. */
 export const FACE_COLORS = { top: '#00aa00', front: '#ff0000', side: '#0000ff', other: '#ffff00' } as const;
+
+/** Διάρκεια της «υγρής μπογιάς» των χρωμάτων όψεων (s). */
+const PAINT_TIME = 1;
 
 /** Ουδέτερο χρώμα του μοντέλου όταν τα χρώματα όψεων είναι κλειστά. */
 const PLAIN_COLOR = '#c7d3e0';
@@ -138,9 +143,21 @@ function PartMesh({ part, showHidden, colorMode }: { part: Part; showHidden: boo
     },
     [geometry, edges, box],
   );
-  // Ομαλή μετάβαση στα χρώματα όψεων: το χρώμα κάθε έδρας ανακατεύεται από το ουδέτερο
-  // στο χρώμα όψης με έναν συντελεστή (0 → 1) που κινείται λίγο σε κάθε καρέ.
+  // Χρώματα όψεων με «υγρή μπογιά»: η μπογιά ανεβαίνει από κάτω προς τα πάνω με κυματιστό,
+  // ρευστό μέτωπο (θόρυβος που κινείται) και απαλή διαβάθμιση, και καλύπτει όλο το σχήμα σε PAINT_TIME.
+  // Στο κλείσιμο «αδειάζει» με τον ίδιο τρόπο. colorMix: 0 = καθόλου μπογιά, 1 = παντού.
   const colorMix = useRef({ value: colorMode ? 1 : 0 });
+  const paintTime = useRef({ value: 0 });
+  const paintBox = useRef({ min: { value: new Vector3() }, size: { value: new Vector3(1, 1, 1) } });
+  {
+    const { min, max } = part.bbox;
+    paintBox.current.min.value.set(min[0], min[1], min[2]);
+    paintBox.current.size.value.set(
+      Math.max(max[0] - min[0], 1e-3),
+      Math.max(max[1] - min[1], 1e-3),
+      Math.max(max[2] - min[2], 1e-3),
+    );
+  }
   // Οι κρυφές γραμμές μένουν στη σκηνή όσο «ξεχτίζονται» μετά το κλείσιμο.
   const [hiddenLeaving, setHiddenLeaving] = useState(false);
   useEffect(() => {
@@ -158,10 +175,50 @@ function PartMesh({ part, showHidden, colorMode }: { part: Part; showHidden: boo
     });
     m.onBeforeCompile = (shader) => {
       shader.uniforms.uColorMix = colorMix.current;
+      shader.uniforms.uPaintTime = paintTime.current;
+      shader.uniforms.uBoxMin = paintBox.current.min;
+      shader.uniforms.uBoxSize = paintBox.current.size;
       shader.uniforms.uPlain = { value: new Color(PLAIN_COLOR) };
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vPaintPos;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPaintPos = transformed;');
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform float uColorMix;\nuniform vec3 uPlain;')
-        .replace('#include <color_fragment>', 'diffuseColor.rgb = mix(uPlain, vColor.rgb, uColorMix);');
+        .replace('#include <common>', `#include <common>
+uniform float uColorMix;
+uniform float uPaintTime;
+uniform vec3 uBoxMin;
+uniform vec3 uBoxSize;
+uniform vec3 uPlain;
+varying vec3 vPaintPos;
+float paintHash(vec3 p) {
+  p = fract(p * 0.3183099 + 0.1);
+  p *= 17.0;
+  return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+float paintNoise(vec3 x) {
+  vec3 i = floor(x);
+  vec3 f = fract(x);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(paintHash(i), paintHash(i + vec3(1, 0, 0)), f.x),
+                 mix(paintHash(i + vec3(0, 1, 0)), paintHash(i + vec3(1, 1, 0)), f.x), f.y),
+             mix(mix(paintHash(i + vec3(0, 0, 1)), paintHash(i + vec3(1, 0, 1)), f.x),
+                 mix(paintHash(i + vec3(0, 1, 1)), paintHash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+}`)
+        .replace('#include <color_fragment>', `
+vec3 q = (vPaintPos - uBoxMin) / uBoxSize;
+// ύψος της μπογιάς: κυρίως από κάτω προς τα πάνω, λίγο λοξά για πιο ζωντανό μέτωπο
+float coord = q.z * 0.72 + q.x * 0.18 + q.y * 0.10;
+// ρευστό, κυματιστό μέτωπο: δύο κλίμακες θορύβου που κυλούν με τον χρόνο
+float n = paintNoise(q * 3.0 + vec3(0.0, 0.0, -uPaintTime * 1.6)) * 0.65
+        + paintNoise(q * 7.0 + vec3(uPaintTime * 0.9, 0.0, 0.0)) * 0.35 - 0.5;
+const float AMP = 0.22;
+const float BAND = 0.07;
+float e = uColorMix * uColorMix * (3.0 - 2.0 * uColorMix);
+float front = mix(-BAND - AMP, 1.0 + BAND + AMP, e);
+float cover = 1.0 - smoothstep(front - BAND, front + BAND, coord + n * AMP);
+diffuseColor.rgb = mix(uPlain, vColor.rgb, cover);
+// «υγρή» λάμψη στο μέτωπο
+diffuseColor.rgb += cover * (1.0 - cover) * 0.7;`);
     };
     return m;
   }, []);
@@ -175,11 +232,11 @@ function PartMesh({ part, showHidden, colorMode }: { part: Part; showHidden: boo
     if (reducedMotion()) {
       mix.value = target;
     } else {
-      // εκθετική εξομάλυνση (~0,4 s για να φτάσει σχεδόν στο τέλος). Το βήμα χρόνου περιορίζεται,
-      // γιατί με απόδοση «κατ' απαίτηση» το πρώτο καρέ μετά από αδράνεια έχει τεράστιο delta.
+      // σταθερός ρυθμός: όλη η κάλυψη σε PAINT_TIME (το βήμα περιορίζεται μετά από αδράνεια)
       const dt = Math.min(delta, 1 / 30);
-      mix.value += (target - mix.value) * (1 - Math.exp(-dt * 10));
-      if (Math.abs(target - mix.value) < 0.004) mix.value = target;
+      const step = dt / PAINT_TIME;
+      mix.value = target > mix.value ? Math.min(target, mix.value + step) : Math.max(target, mix.value - step);
+      paintTime.current.value += dt;
     }
     invalidate();
   });

@@ -107,15 +107,27 @@ export default function App() {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [cssFullscreen]);
+  const lockLandscape = () => {
+    const o = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> };
+    o?.lock?.('landscape').catch(() => {});
+  };
   const toggleFullscreen = () => {
     if (cssFullscreen) return setCssFullscreen(false);
-    if (document.fullscreenElement) return void document.exitFullscreen().catch(() => {});
+    if (document.fullscreenElement) {
+      screen.orientation?.unlock?.();
+      return void document.exitFullscreen().catch(() => {});
+    }
     const el = viewerPaneRef.current;
     if (!el?.requestFullscreen) return setCssFullscreen(true);
     // Αν ο browser αρνηθεί ή δεν απαντήσει (π.χ. περιμένει άδεια), απλώνουμε με CSS.
     let settled = false;
     el.requestFullscreen().then(
-      () => (settled = true),
+      () => {
+        settled = true;
+        // Φύλλο όψεων: ζητάμε οριζόντια οθόνη όπου επιτρέπεται (π.χ. Android). Στο iPhone δεν
+        // επιτρέπεται· εκεί το ίδιο το χαρτί γυρίζει με CSS όταν η οθόνη είναι όρθια.
+        if (pane === 'sheet') lockLandscape();
+      },
       () => {
         settled = true;
         setCssFullscreen(true);
@@ -287,7 +299,17 @@ export default function App() {
       </header>
 
       <main className={`app-main${pane === 'sheet' ? ' sheet-mode' : ''}`}>
-        <section ref={viewerPaneRef} className={`viewer-pane${cssFullscreen ? ' css-fullscreen' : ''}`} aria-label="Προβολή">
+        <section
+          ref={viewerPaneRef}
+          className={`viewer-pane${cssFullscreen ? ' css-fullscreen' : ''}${fullscreen && pane === 'sheet' ? ' sheet-full' : ''}`}
+          aria-label="Προβολή"
+        >
+          {/* Πλήρης οθόνη φύλλου: μόνο το χαρτί, και ένα κουμπί για έξοδο. */}
+          {fullscreen && pane === 'sheet' && (
+            <button type="button" className="sheet-exit" onClick={toggleFullscreen} aria-label="Έξοδος από πλήρη οθόνη" title="Έξοδος (Esc)">
+              ✕
+            </button>
+          )}
           <div className="pane-header">
           <div className="segmented pane-switch" role="tablist" aria-label="Προβολή" data-pane={pane}>
             <button type="button" role="tab" aria-selected={pane === '3d'} onClick={() => setPane('3d')}>
