@@ -11,7 +11,9 @@
   --dim: #0b57a4;
   --icon-fill: #dfe7ef;
   --radius: 10px;
-  --header-bg: #17212b;
+  --header-bg: #ffffff;
+  --header-text: #17212b;
+  --header-border: #d3dae1;
   --viewer-bg: #f4f6f8;
   --chip-bg: rgba(255, 255, 255, 0.92);
   --label-halo: #ffffff;
@@ -28,7 +30,9 @@
 }
 
 /* Σκοτεινό θέμα (προεπιλογή). Το φύλλο όψεων μένει λευκό σαν χαρτί. */
-:root[data-theme='dark'] {
+:root[data-theme='dark'],
+:root[data-theme='gray'],
+:root[data-theme='black'] {
   --bg: #0f151b;
   --panel: #18212a;
   --text: #e6edf3;
@@ -41,6 +45,8 @@
   --dim: #7cc0ff;
   --icon-fill: #2a3846;
   --header-bg: #0a0f14;
+  --header-text: #ffffff;
+  --header-border: rgba(255, 255, 255, 0.25);
   --viewer-bg: #141c24;
   --chip-bg: rgba(24, 33, 42, 0.92);
   --label-halo: #141c24;
@@ -59,10 +65,10 @@
 .theme-toggle {
   min-height: 34px;
   padding: 0 12px;
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  border: 1px solid var(--header-border, rgba(255, 255, 255, 0.25));
   border-radius: 999px;
   background: transparent;
-  color: #fff;
+  color: inherit;
   cursor: pointer;
   font-size: 0.85rem;
 }
@@ -127,7 +133,8 @@ select {
   padding-top: env(safe-area-inset-top);
   min-height: 48px;
   background: var(--header-bg);
-  color: #fff;
+  color: var(--header-text, #fff);
+  border-bottom: 1px solid var(--header-border, transparent);
 }
 
 .app-header h1 {
@@ -1055,7 +1062,11 @@ select:focus-visible {
 }
 
 .pill[aria-pressed='true']::before {
-  content: '✓';
+  /* μονόχρωμο τικ σχεδιασμένο με CSS (όχι χαρακτήρας/emoji) */
+  height: 0.8em;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 
 .layout-switch {
@@ -1844,4 +1855,345 @@ body {
     padding: 0 6px;
     justify-content: center;
   }
+}
+
+/* ---------- Κλείδωμα φύλλου όψεων ---------- */
+.lock-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.55);
+  animation: fade-in var(--dur) ease both;
+}
+
+.lock-dialog {
+  width: min(340px, 100%);
+  display: grid;
+  gap: 10px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  text-align: center;
+  animation: popover-in var(--dur) var(--ease-out) both;
+}
+
+.lock-dialog h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.lock-dialog .hint {
+  margin: 0;
+}
+
+.lock-icon {
+  font-size: 1.8rem;
+}
+
+.lock-dialog input {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 16px;
+  text-align: center;
+  letter-spacing: 0.2em;
+}
+
+.lock-dialog input[aria-invalid='true'] {
+  border-color: #e5484d;
+}
+
+.lock-dialog .field-error {
+  margin: 0;
+}
+
+.lock-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+/* ---------- Εικονίδια ---------- */
+.icon {
+  flex: none;
+  display: inline-block;
+  vertical-align: -0.15em;
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tab-lock {
+  margin-right: 6px;
+  vertical-align: -0.12em;
+}
+
+.lock-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  margin: 0 auto;
+  border-radius: 50%;
+  background: var(--accent-weak);
+  color: var(--accent);
+}
+
+.sheet-exit {
+  display: grid;
+  place-items: center;
+}
+
+.card-tool,
+.drag-handle {
+  display: inline-grid;
+  place-items: center;
+}
+
+.hint .icon {
+  vertical-align: -0.2em;
+  opacity: 0.85;
+}
+
+/* ---------- Φόντο: γκρι και μαύρο (πάνω στα σκούρα χρώματα, χωρίς μπλε απόχρωση) ---------- */
+:root[data-theme='gray'] {
+  --bg: #2b2d31;
+  --panel: #36393e;
+  --border: #4a4e55;
+  --muted: #b0b4ba;
+  --accent-weak: #2c3e55;
+  --icon-fill: #474b52;
+  --header-bg: #222427;
+  --viewer-bg: #34373b;
+  --chip-bg: rgba(54, 57, 62, 0.92);
+  --label-halo: #34373b;
+  --input-bg: #2a2c30;
+  --surface-2: #404349;
+  --empty-overlay: rgba(52, 55, 59, 0.96);
+  --sheet-bg: #26282b;
+}
+
+:root[data-theme='black'] {
+  --bg: #000000;
+  --panel: #0e0e0f;
+  --border: #26272a;
+  --muted: #9a9ca1;
+  --accent-weak: #13233a;
+  --icon-fill: #1e1f22;
+  --header-bg: #000000;
+  --viewer-bg: #000000;
+  --chip-bg: rgba(14, 14, 15, 0.92);
+  --label-halo: #000000;
+  --input-bg: #070708;
+  --surface-2: #17181a;
+  --empty-overlay: rgba(0, 0, 0, 0.96);
+  --sheet-bg: #000000;
+}
+
+/* ---------- Κουμπί «Φόντο» ---------- */
+.theme-picker {
+  position: relative;
+}
+
+.theme-toggle .swatch,
+.theme-menu .swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  flex: none;
+}
+
+.theme-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  min-width: 190px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  transform-origin: top right;
+  animation: popover-in var(--dur) var(--ease-out) both;
+}
+
+.theme-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.theme-menu button:hover,
+.theme-menu button:focus-visible {
+  background: var(--accent-weak);
+}
+
+.theme-menu .theme-check {
+  margin-left: auto;
+  color: var(--accent);
+}
+
+/* ---------- Πρόταση εγκατάστασης (κινητό) ---------- */
+.install-banner {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 10px 12px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  animation: install-in 360ms var(--ease-out) both;
+}
+
+.install-icon {
+  flex: none;
+  border-radius: 10px;
+}
+
+.install-text {
+  flex: 1;
+  display: grid;
+  gap: 2px;
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+
+.install-text strong {
+  font-size: 0.95rem;
+}
+
+.install-text span {
+  color: var(--muted);
+}
+
+.install-text b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.install-text .icon {
+  color: var(--accent);
+  vertical-align: -0.2em;
+}
+
+.install-banner .primary-button {
+  flex: none;
+  min-height: 38px;
+}
+
+.install-close {
+  flex: none;
+  align-self: flex-start;
+  color: var(--muted);
+}
+
+@keyframes install-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------- Κουμπί πλήρους οθόνης μέσα στην προβολή (κάτω δεξιά) ---------- */
+.sheet-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.fs-fab {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--chip-bg);
+  color: var(--text);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.92);
+  pointer-events: none;
+  transition:
+    opacity var(--dur) ease,
+    transform var(--dur) var(--ease-out),
+    border-color var(--dur-fast) ease;
+}
+
+.fs-fab:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Υπολογιστής: εμφανίζεται όταν το ποντίκι είναι πάνω στην προβολή (ή με το πληκτρολόγιο). */
+.viewer:hover .fs-fab,
+.sheet-stage:hover .fs-fab,
+.fs-fab:focus-visible,
+.viewer-pane.css-fullscreen .fs-fab,
+.viewer-pane:fullscreen .fs-fab {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+/* Οθόνες αφής (κινητό, tablet): πάντα ορατό. */
+@media (hover: none) {
+  .fs-fab {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+  }
+}
+
+/* Στην πλήρη οθόνη του φύλλου υπάρχει ήδη το ✕· το κουμπί κρύβεται. */
+.viewer-pane.sheet-full .fs-fab {
+  display: none;
+}
+
+.viewer-pane.sheet-full .sheet-stage {
+  position: absolute;
+  inset: 0;
 }

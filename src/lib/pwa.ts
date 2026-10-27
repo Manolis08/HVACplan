@@ -16,14 +16,24 @@ export function onPwaEvent(listener: (e: PwaEvent) => void): () => void {
   return () => listeners.delete(listener);
 }
 
+/** Μέχρι πόσο μετά το άνοιγμα μια νέα έκδοση εφαρμόζεται χωρίς ερώτηση. */
+const AUTO_UPDATE_WINDOW_MS = 15_000;
+const openedAt = performance.now();
+
 export function registerServiceWorker() {
   if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return;
   window.addEventListener('load', async () => {
     try {
       const hadController = !!navigator.serviceWorker.controller;
       const reg = await navigator.serviceWorker.register('./sw.js');
-      const askUpdate = (w: ServiceWorker) =>
-        emit({ type: 'update', apply: () => w.postMessage({ type: 'SKIP_WAITING' }) });
+      // Νέα έκδοση: στα πρώτα δευτερόλεπτα μετά το άνοιγμα (ο χρήστης δεν έχει αρχίσει ακόμα δουλειά)
+      // εφαρμόζεται αυτόματα με μία ανανέωση. Αργότερα ρωτάμε με το κουμπί «Ανανέωση», ώστε να μη
+      // χαθεί κάτι που κάνει (π.χ. ανοιχτό αρχείο 3D, ξεκλείδωτο φύλλο).
+      const askUpdate = (w: ServiceWorker) => {
+        const apply = () => w.postMessage({ type: 'SKIP_WAITING' });
+        if (performance.now() - openedAt < AUTO_UPDATE_WINDOW_MS) apply();
+        else emit({ type: 'update', apply });
+      };
       const track = (w: ServiceWorker) =>
         w.addEventListener('statechange', () => {
           if (w.state !== 'installed') return;
@@ -33,6 +43,8 @@ export function registerServiceWorker() {
       if (reg.waiting && navigator.serviceWorker.controller) askUpdate(reg.waiting);
       if (reg.installing) track(reg.installing);
       reg.addEventListener('updatefound', () => reg.installing && track(reg.installing));
+      // Έλεγχος για νέα έκδοση αμέσως στο άνοιγμα (όχι μόνο όταν το αποφασίσει ο browser).
+      void reg.update().catch(() => undefined);
 
       // Μετά την «Ανανέωση», η νέα έκδοση αναλαμβάνει και ξαναφορτώνουμε μία φορά.
       let reloading = false;

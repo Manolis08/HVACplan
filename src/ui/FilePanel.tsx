@@ -4,6 +4,7 @@ import type { RawModel } from '../io/loadModel';
 import { formatMb } from '../io/loadModel';
 import { IDENTITY, mulMat3, orientedSize, rot90, type Mat3, type PreparedModel } from '../io/meshTools';
 import { UNITS, type UpAxis, type Unit } from '../io/units';
+import { Icon } from './Icon';
 
 export interface LoadedFile {
   raw: RawModel;
@@ -169,7 +170,7 @@ export function FilePanel({ file, options, loadingName, error, onFiles, onChange
                   className="secondary-button"
                   onClick={() => onChange((o) => ({ rotation: mulMat3(rot90(a), o.rotation) }))}
                 >
-                  ↻ γύρω από {a}
+                  <Icon name="rotate" size={14} /> γύρω από {a}
                 </button>
               ))}
               <button type="button" className="link-button" onClick={() => set({ rotation: IDENTITY })}>
@@ -189,7 +190,7 @@ export function FilePanel({ file, options, loadingName, error, onFiles, onChange
           ) : (
             <div className="confirmed">
               <p>
-                ✓ Επιβεβαιώθηκε: <strong>{options.unit}</strong>, <strong>{options.up} πάνω</strong>. Οι αλλαγές
+                <Icon name="check" size={14} /> Επιβεβαιώθηκε: <strong>{options.unit}</strong>, <strong>{options.up} πάνω</strong>. Οι αλλαγές
                 εφαρμόζονται αμέσως.
               </p>
               <dl className="info">

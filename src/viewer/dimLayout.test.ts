@@ -88,7 +88,7 @@ describe('απαραίτητες διαστάσεις', () => {
     expect(kept).toEqual(expect.arrayContaining(['L', 'W', 'Ht', 'P', 'Wc', 'Hs', 'Hw', 'Dw']));
   });
 
-  it('ΚΥΒΟΣ και ΕΞΑΡΤΙΜΑ: καμία δεν περισσεύει, κρατά όλες (και τις διαμέτρους)', () => {
+  it('ΚΥΒΟΣ και ΕΞΑΡΤΗΜΑ: καμία δεν περισσεύει, κρατά όλες (και τις διαμέτρους)', () => {
     for (const id of ['notched-cube', 'bearing-block']) {
       const { all, kept } = ids(id);
       expect(kept).toEqual(all);

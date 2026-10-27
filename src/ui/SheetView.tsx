@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { edgeTopology } from '../drawing/hlr';
 import { computeSheetViews, sheetSvg, suggestedScale, type TitleFields } from '../drawing/sheet';
 import type { Scale } from '../lib/scale';
 import type { Part } from '../model/types';
 import type { ProjectionAngle } from './ProjectionSymbol';
+import { Icon } from './Icon';
 
 /** Πάνω από αυτό ο υπολογισμός κρυφών γραμμών γίνεται πολύ αργός σε κινητό: δεν σχεδιάζουμε. */
 export const MAX_SHEET_TRIANGLES = 200_000;
@@ -72,9 +73,11 @@ interface Props {
   /** Καλείται με την προτεινόμενη κλίμακα (μεγαλύτερη που χωρά στο A3) όταν ανοίγει το φύλλο. */
   onSuggestedScale?: (s: Scale) => void;
   title: string;
+  /** Στοιχείο πάνω στο φύλλο, κάτω δεξιά (π.χ. το κουμπί πλήρους οθόνης). */
+  overlay?: ReactNode;
 }
 
-export function SheetView({ part, blockedReason, projection, openMesh, fileName, scale, onSuggestedScale, title }: Props) {
+export function SheetView({ part, blockedReason, projection, openMesh, fileName, scale, onSuggestedScale, title, overlay }: Props) {
   const [projectionLines, setProjectionLines] = useState(true);
   const [showDims, setShowDims] = useState(true);
   const [layout, setLayout] = useState<'quadrants' | 'standard'>('quadrants');
@@ -161,13 +164,16 @@ export function SheetView({ part, blockedReason, projection, openMesh, fileName,
 
   return (
     <div className="sheet-pane">
-      <div className="sheet-scroll">
-        {message ? (
-          <p className="sheet-message">{message}</p>
-        ) : (
-          // Το SVG παράγεται από τον δικό μας κώδικα· τα κείμενα του χρήστη μπαίνουν με διαφυγή (esc).
-          <div className="sheet-page" dangerouslySetInnerHTML={{ __html: svg ?? '' }} />
-        )}
+      <div className="sheet-stage">
+        <div className="sheet-scroll">
+          {message ? (
+            <p className="sheet-message">{message}</p>
+          ) : (
+            // Το SVG παράγεται από τον δικό μας κώδικα· τα κείμενα του χρήστη μπαίνουν με διαφυγή (esc).
+            <div className="sheet-page" dangerouslySetInnerHTML={{ __html: svg ?? '' }} />
+          )}
+        </div>
+        {overlay}
       </div>
       <div className="sheet-toolbar">
         <div className="sheet-options" role="group" aria-label="Επιλογές φύλλου">
@@ -200,7 +206,7 @@ export function SheetView({ part, blockedReason, projection, openMesh, fileName,
               aria-controls="title-block-form"
               onClick={() => setTbOpen((o) => !o)}
             >
-              Υπόμνημα <span className="chevron" aria-hidden="true">▾</span>
+              Υπόμνημα <Icon name="chevron" size={14} className="chevron" />
             </button>
           )}
           <div className="menu-wrap" ref={menuRef}>
@@ -212,7 +218,7 @@ export function SheetView({ part, blockedReason, projection, openMesh, fileName,
               disabled={!svg || !!message || !!busy}
               onClick={() => setDlOpen((o) => !o)}
             >
-              {busy ? `Ετοιμασία ${busy.toUpperCase()}…` : 'Λήψη'} <span className="chevron" aria-hidden="true">▾</span>
+              {busy ? `Ετοιμασία ${busy.toUpperCase()}…` : 'Λήψη'} <Icon name="chevron" size={14} className="chevron" />
             </button>
             {dlOpen && (
               <div className="menu" role="menu" aria-label="Λήψη φύλλου">

@@ -96,7 +96,7 @@ const notchedCube: TemplateDef = {
 // ---------------------------------------------------------------------------
 const bearingBlock: TemplateDef = {
   id: 'bearing-block',
-  name: 'ΕΞΑΡΤΙΜΑ',
+  name: 'ΕΞΑΡΤΗΜΑ',
   description: 'Βάση με χελιδονοουρά από κάτω, ορθοστάτης με καμπύλη κορυφή, οπή άξονα και οπή λίπανσης.',
   params: [
     { key: 'L', label: 'Μήκος βάσης', axis: 'X', defaultValue: 100 },
@@ -109,7 +109,7 @@ const bearingBlock: TemplateDef = {
     { key: 'Gb', label: 'Χελιδονοουρά: άνοιγμα (κάτω)', axis: 'X', defaultValue: 60 },
     { key: 'Gd', label: 'Χελιδονοουρά: βάθος', axis: 'Z', defaultValue: 10 },
     { key: 'Do', label: 'Διάμετρος οπής λίπανσης Ø', defaultValue: 4 },
-    { key: 'yo', label: 'Οπή λίπανσης από μπροστά', axis: 'Y', defaultValue: 35 },
+    { key: 'yo', label: 'Οπή λίπανσης από μπροστά', axis: 'Y', defaultValue: 40 },
   ],
   validate: ({ L, W, H, Hax, R, Db, Gt, Gb, Gd, Do, yo }) => {
     const out: Issue[] = [];
@@ -177,7 +177,7 @@ const steppedBlock: TemplateDef = {
   description: 'Πίσω φτερό αριστερά (κρεμασμένο από την κορυφή, με κενό από κάτω), ψηλή κολόνα και χαμηλό σκαλοπάτι δεξιά.',
   params: [
     { key: 'P', label: 'Πίσω μήκος (φτερό + κολόνα)', axis: 'X', defaultValue: 20 },
-    { key: 'Wc', label: 'Πλάτος κολόνας', axis: 'X', defaultValue: 5 },
+    { key: 'Wc', label: 'Πλάτος κολόνας', axis: 'X', defaultValue: 3 },
     { key: 'Ls', label: 'Μήκος σκαλοπατιού', axis: 'X', defaultValue: 15 },
     { key: 'D', label: 'Βάθος', axis: 'Y', defaultValue: 15 },
     { key: 'Dw', label: 'Βάθος φτερού', axis: 'Y', defaultValue: 3 },
@@ -208,9 +208,11 @@ const steppedBlock: TemplateDef = {
     ]);
     return part(g, {
       dims: [
-        linear('L', L, [0, D, 0], [L, D, 0], [NZ, PY], true),
+        // μήκος στο ύψος του κάτω άκρου του φτερού: και τα δύο άκρα πέφτουν πάνω στο σχήμα
+        linear('L', L, [0, D, Math.min(zw, Hs)], [L, D, Math.min(zw, Hs)], [NZ, PY], true),
         linear('W', D, [L, 0, 0], [L, D, 0], [NZ, PX], true),
-        linear('Ht', Ht, [x1, 0, 0], [x1, 0, Ht], [NX, NY], true),
+        // ύψος στην μπροστινή δεξιά ακμή της κολόνας: στα δεξιά, όχι πάνω από το φτερό
+        linear('Ht', Ht, [P, 0, 0], [P, 0, Ht], [PX, NY], true),
         linear('P', P, [0, D, Ht], [P, D, Ht], [PZ, PY]),
         linear('Wc', Wc, [x1, 0, Hc], [P, 0, Hc], [PZ, NY]),
         linear('Ls', Ls, [P, 0, 0], [L, 0, 0], [NZ, NY]),

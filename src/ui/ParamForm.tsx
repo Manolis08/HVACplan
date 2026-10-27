@@ -1,6 +1,7 @@
 import { formatNumber } from '../lib/format';
 import type { Evaluation } from '../model/evaluate';
 import type { TemplateDef, Toggles } from '../model/types';
+import { Icon } from './Icon';
 
 interface Props {
   template: TemplateDef;
@@ -29,7 +30,7 @@ export function ParamForm({ template, inputs, toggles, evaluation, onInput, onTo
         onClick={() => onOpenChange(!open)}
       >
         <span>{open ? 'Απόκρυψη διαστάσεων' : 'Αλλαγή διαστάσεων'}</span>
-        <span className="chevron" aria-hidden="true">▾</span>
+        <Icon name="chevron" size={14} className="chevron" />
       </button>
 
       <div id={`params-${template.id}`} className={`collapsible${open ? ' open' : ''}`} inert={!open}>

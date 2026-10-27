@@ -50,6 +50,10 @@ export function loadState(): Partial<SavedState> {
       out.inputs[tid] = Object.fromEntries(Object.entries(vals).filter(([, v]) => typeof v === 'string')) as Record<string, string>;
     }
   }
+  // Παλιά προεπιλογή: πλάτος κολόνας ΤΕΤΡΙΣ 5 → τώρα 3. Αν δεν το είχε αλλάξει ο χρήστης, ισχύει το νέο.
+  if (out.inputs?.['stepped-block']?.Wc === '5') delete out.inputs['stepped-block'].Wc;
+  // Παλιά προεπιλογή: οπή λίπανσης ΕΞΑΡΤΗΜΑΤΟΣ στα 35 → τώρα 40 (στη μέση του βάθους).
+  if (out.inputs?.['bearing-block']?.yo === '35') delete out.inputs['bearing-block'].yo;
   if (isRecord(raw.toggles)) {
     out.toggles = {};
     for (const [tid, vals] of Object.entries(raw.toggles)) {
@@ -76,6 +80,7 @@ export function loadState(): Partial<SavedState> {
     out.templateNames = Object.fromEntries(
       Object.entries(raw.templateNames).filter(([, v]) => typeof v === 'string' && v.trim() !== ''),
     ) as Record<string, string>;
+  if (out.templateNames?.['bearing-block'] === 'ΕΞΑΡΤΙΜΑ') delete out.templateNames['bearing-block']; // παλιό ορθογραφικό λάθος
   return out;
 }
 

@@ -11,15 +11,19 @@ import { TEMPLATES, templateById } from './model/templates';
 import type { Part, Toggles } from './model/types';
 import { FilePanel, FilePicker, type FileOptions, type LoadedFile } from './ui/FilePanel';
 import { ParamForm } from './ui/ParamForm';
+import { InstallBanner } from './ui/InstallBanner';
 import { PwaBanner } from './ui/PwaBanner';
 import type { ProjectionAngle } from './ui/ProjectionSymbol';
 import { ScaleSelector } from './ui/ScaleSelector';
 import { TemplatePicker } from './ui/TemplatePicker';
+import { SheetLock } from './ui/SheetLock';
 import { SheetView } from './ui/SheetView';
+import { ThemePicker } from './ui/ThemePicker';
 import { ViewToolbar } from './ui/ViewToolbar';
 import type { DimsMode } from './viewer/dimLayout';
 import { FACE_COLORS, Viewer, type ViewerApi } from './viewer/Viewer';
 import { viewLabel, type ViewId } from './viewer/views';
+import { Icon } from './ui/Icon';
 
 const saved = loadState();
 
@@ -137,6 +141,25 @@ export default function App() {
       if (!settled && !document.fullscreenElement) setCssFullscreen(true);
     }, 800);
   };
+  // Φύλλο όψεων κλειδωμένο με κωδικό· ξεκλειδώνει μέχρι την επόμενη ανανέωση της σελίδας.
+  const [sheetUnlocked, setSheetUnlocked] = useState(false);
+  const [askCode, setAskCode] = useState(false);
+  // Κουμπί πλήρους οθόνης: μόνο εικονίδιο, κάτω δεξιά μέσα στην προβολή (3D ή φύλλο). Στον υπολογιστή
+  // φαίνεται όταν το ποντίκι είναι πάνω στην προβολή· σε οθόνες αφής φαίνεται πάντα.
+  const fullscreenButton = (
+    <button
+      type="button"
+      className="fs-fab"
+      aria-pressed={fullscreen}
+      aria-label={fullscreen ? 'Έξοδος από πλήρη οθόνη' : 'Πλήρης οθόνη'}
+      title={fullscreen ? 'Έξοδος από πλήρη οθόνη (Esc)' : 'Πλήρης οθόνη'}
+      onClick={toggleFullscreen}
+    >
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        {fullscreen ? <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" /> : <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />}
+      </svg>
+    </button>
+  );
   // Πεδία μέτρων του έτοιμου σχήματος: κρυμμένα μέχρι να τα ζητήσει ο χρήστης.
   const [paramsOpen, setParamsOpen] = useState(false);
 
@@ -287,14 +310,7 @@ export default function App() {
         <h1>HVACplan</h1>
         <div className="header-right">
           <span className="header-note">Μονάδες: mm</span>
-          <button
-            type="button"
-            className="theme-toggle"
-            aria-pressed={theme === 'dark'}
-            onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
-          >
-            {theme === 'dark' ? '☀ Φωτεινό' : '☾ Σκοτεινό'}
-          </button>
+          <ThemePicker value={theme} onChange={setTheme} />
         </div>
       </header>
 
@@ -307,7 +323,7 @@ export default function App() {
           {/* Πλήρης οθόνη φύλλου: μόνο το χαρτί, και ένα κουμπί για έξοδο. */}
           {fullscreen && pane === 'sheet' && (
             <button type="button" className="sheet-exit" onClick={toggleFullscreen} aria-label="Έξοδος από πλήρη οθόνη" title="Έξοδος (Esc)">
-              ✕
+              <Icon name="close" size={18} />
             </button>
           )}
           <div className="pane-header">
@@ -316,28 +332,14 @@ export default function App() {
               3D
             </button>
             <button type="button" role="tab" aria-selected={pane === 'sheet'} onClick={() => {
-                setPane('sheet');
                 setScaleOpen(false);
+                if (sheetUnlocked) setPane('sheet');
+                else setAskCode(true);
               }}>
+              {!sheetUnlocked && <Icon name="lock" size={15} className="tab-lock" />}
               Φύλλο όψεων
             </button>
           </div>
-          <button
-            type="button"
-            className="secondary-button fullscreen-button"
-            aria-pressed={fullscreen}
-            onClick={toggleFullscreen}
-            title={fullscreen ? 'Έξοδος από πλήρη οθόνη (Esc)' : 'Πλήρης οθόνη'}
-          >
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              {fullscreen ? (
-                <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
-              ) : (
-                <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
-              )}
-            </svg>
-            <span>{fullscreen ? 'Έξοδος' : 'Πλήρης οθόνη'}</span>
-          </button>
           </div>
           {pane === 'sheet' && (
             <SheetView
@@ -349,9 +351,11 @@ export default function App() {
               scale={sheetScale}
               onSuggestedScale={applySuggestedScale}
               title={fileMode && file ? file.raw.name.replace(/\.[^.]+$/, '') : nameOf(template)}
+              overlay={fullscreenButton}
             />
           )}
           <div className="viewer" hidden={pane !== '3d'}>
+            {fullscreenButton}
             <Viewer
               ref={viewerRef}
               part={viewerPart}
@@ -375,7 +379,7 @@ export default function App() {
               aria-label={`Κλίμακα 3D: ${scaleLabel(viewerScale)}. Πάτα για αλλαγή.`}
               onClick={() => setScaleOpen((o) => !o)}
             >
-              Κλίμακα <strong>{scaleLabel(viewerScale)}</strong> <span className="chevron" aria-hidden="true">▾</span>
+              Κλίμακα <strong>{scaleLabel(viewerScale)}</strong> <Icon name="chevron" size={12} className="chevron" />
               {viewerScale.n !== 1 && <span className="chip-sub">{scaleHint(viewerScale)}</span>}
             </button>
             {scaleOpen && (
@@ -451,7 +455,9 @@ export default function App() {
                     })
                   }
                 />
-                <p className="hint">Σύρε το ⠿ για να αλλάξεις σειρά· ✎ για μετονομασία.</p>
+                <p className="hint">
+                  Σύρε το <Icon name="grip" size={13} /> για να αλλάξεις σειρά· <Icon name="pencil" size={13} /> για μετονομασία.
+                </p>
                 <ParamForm
                   key={template.id}
                   open={paramsOpen}
@@ -535,7 +541,19 @@ export default function App() {
         </aside>
       </main>
 
+      {askCode && (
+        <SheetLock
+          onUnlock={() => {
+            setSheetUnlocked(true);
+            setAskCode(false);
+            setPane('sheet');
+          }}
+          onCancel={() => setAskCode(false)}
+        />
+      )}
+
       <PwaBanner />
+      <InstallBanner />
 
       {dragging && (
         <div className="drag-overlay" aria-hidden="true">

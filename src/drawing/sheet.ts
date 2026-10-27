@@ -64,7 +64,8 @@ const FRAME_WIDTH = 0.7;
 
 const f2 = (x: number) => x.toFixed(2);
 
-const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const esc = (t: string) =>
+  t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 /**
  * Υπόμνημα 160 × 50 (σειρές 10 mm):

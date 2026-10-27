@@ -18,11 +18,12 @@ import {
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
+import { edgeTopology, silhouettes } from '../drawing/hlr';
 import type { Scale } from '../lib/scale';
-import type { Theme } from '../lib/theme';
+import { themeInfo, type Theme } from '../lib/theme';
 import type { Part, Vec3 } from '../model/types';
 import { layoutDims, type DimsMode } from './dimLayout';
-import { bboxCorners, detectView, fitZoom, viewBasis, viewById, type ViewId } from './views';
+import { bboxCorners, detectView, fitZoom, viewBasis, viewById, VIEWS, type ViewId } from './views';
 
 // Το μοντέλο είναι Z-πάνω (όπως στο τεχνικό σχέδιο), άρα και η κάμερα.
 Object3D.DEFAULT_UP.set(0, 0, 1);
@@ -73,6 +74,9 @@ function fitMargin(width: number, height: number, mode: DimsMode) {
 
 /** Χρώματα όψεων: κάτοψη (+Z) πράσινο, πρόσοψη (−Y) κόκκινο, πλάγια (−X) μπλε, υπόλοιπα κίτρινο. */
 export const FACE_COLORS = { top: '#00aa00', front: '#ff0000', side: '#0000ff', other: '#ffff00' } as const;
+
+/** Γωνία μέσα στην οποία η περιστροφή «κουμπώνει» σε όψη όταν αφήνεις το ποντίκι/δάχτυλο (~10°). */
+const SNAP_ANGLE = (10 * Math.PI) / 180;
 
 /** Διάρκεια της «υγρής μπογιάς» των χρωμάτων όψεων (s). */
 const PAINT_TIME = 1;
@@ -244,6 +248,7 @@ diffuseColor.rgb += cover * (1.0 - cover) * 0.7;`);
     <group>
       <mesh geometry={geometry} material={material} />
       <primitive object={edges} />
+      <HiddenSilhouettes triangles={part.triangles} show={showHidden} />
       {(showHidden || hiddenLeaving) && (
         <HiddenEdges edges={part.edges} show={showHidden} onHidden={() => setHiddenLeaving(false)} />
       )}
@@ -372,6 +377,107 @@ function SlidingParts({ part, shape, showHidden, colorMode, slidingRef, apiRef, 
  * μπροστά τους (έλεγχος βάθους «μεγαλύτερο από» ανά pixel στην κάρτα γραφικών). Έτσι πιάνονται
  * και ακμές που κρύβονται πίσω από άλλο κομμάτι υλικού, όχι μόνο οι «πίσω» έδρες.
  */
+/**
+ * Αποστάσεις παυλών (2 ανά ακμή) από τη θέση στον χώρο: προβολή πάνω στη διεύθυνση της ακμής, με ίδια
+ * φορά για παράλληλες ακμές. Έτσι ακμές που συμπίπτουν στην οθόνη έχουν τις παύλες στο ίδιο σημείο.
+ */
+function alignedDashDistances(pos: ArrayLike<number>): Float32Array {
+  const out = new Float32Array((pos.length / 6) * 2);
+  for (let i = 0; i < pos.length / 6; i++) {
+    const o = i * 6;
+    let dx = pos[o + 3] - pos[o];
+    let dy = pos[o + 4] - pos[o + 1];
+    let dz = pos[o + 5] - pos[o + 2];
+    const len = Math.hypot(dx, dy, dz) || 1;
+    dx /= len;
+    dy /= len;
+    dz /= len;
+    const e = 1e-6;
+    if (dx < -e || (Math.abs(dx) <= e && (dy < -e || (Math.abs(dy) <= e && dz < 0)))) {
+      dx = -dx;
+      dy = -dy;
+      dz = -dz;
+    }
+    out[i * 2] = pos[o] * dx + pos[o + 1] * dy + pos[o + 2] * dz;
+    out[i * 2 + 1] = pos[o + 3] * dx + pos[o + 4] * dy + pos[o + 5] * dz;
+  }
+  return out;
+}
+
+/** Πάνω από τόσα τρίγωνα δεν υπολογίζουμε περιγράμματα καμπύλων σε κάθε κίνηση (κόστος). */
+const MAX_SILHOUETTE_TRIANGLES = 200_000;
+
+/**
+ * Κρυφά περιγράμματα καμπύλων επιφανειών (π.χ. τα τοιχώματα της οπής λίπανσης, η οπή του άξονα):
+ * δεν είναι ακμές του σχήματος, εξαρτώνται από τη ματιά, άρα υπολογίζονται ξανά όταν γυρίζει η κάμερα.
+ * Εμφανίζονται ομαλά μόλις χτιστούν οι υπόλοιπες κρυφές γραμμές.
+ */
+function HiddenSilhouettes({ triangles, show }: { triangles: Float32Array; show: boolean }) {
+  const camera = useThree((s) => s.camera) as OrthographicCamera;
+  const controls = useThree((s) => s.controls) as unknown as CameraControlsImpl | null;
+  const invalidate = useThree((s) => s.invalidate);
+  const topo = useMemo(() => (triangles.length / 9 <= MAX_SILHOUETTE_TRIANGLES ? edgeTopology(triangles) : null), [triangles]);
+  const line = useMemo(() => {
+    const g = new LineSegmentsGeometry();
+    g.setPositions([0, 0, 0, 0, 0, 0]);
+    const m = new LineMaterial({ color: 0x4488ff, linewidth: 1.6, dashed: true, transparent: true, opacity: 0, depthWrite: false });
+    m.depthFunc = GreaterDepth;
+    const l = new LineSegments2(g, m);
+    l.renderOrder = 1;
+    l.visible = false;
+    return l;
+  }, []);
+  useEffect(
+    () => () => {
+      line.geometry.dispose();
+      line.material.dispose();
+    },
+    [line],
+  );
+  const state = useRef({ dir: new Vector3(), target: new Vector3(), topo: null as unknown, wait: 0 });
+  useEffect(() => invalidate(), [show, invalidate]);
+  useFrame((_, delta) => {
+    const st = state.current;
+    const m = line.material;
+    const px = 1 / camera.zoom;
+    m.dashSize = 4 * px;
+    m.gapSize = 4 * px;
+    if (!topo || !controls) {
+      line.visible = false;
+      return;
+    }
+    // ματιά από το μοντέλο προς την κάμερα
+    controls.getTarget(st.target, false);
+    const dir = camera.position.clone().sub(st.target).normalize();
+    if (st.topo !== topo || dir.angleTo(st.dir) > 0.004) {
+      st.dir.copy(dir);
+      st.topo = topo;
+      const segs = silhouettes(topo, [dir.x, dir.y, dir.z]);
+      const pts = segs.length ? segs : new Float32Array(6);
+      const g = new LineSegmentsGeometry();
+      g.setPositions(pts);
+      line.geometry.dispose();
+      line.geometry = g;
+      line.computeLineDistances(); // δημιουργεί τις αποστάσεις παυλών· μετά τις ευθυγραμμίζουμε
+      const d = (g.getAttribute('instanceDistanceStart') as unknown as { data: { array: Float32Array; needsUpdate: boolean } }).data;
+      d.array.set(alignedDashDistances(pts));
+      d.needsUpdate = true;
+    }
+    // ομαλή εμφάνιση μετά το χτίσιμο των ακμών, γρήγορο σβήσιμο στο κλείσιμο
+    const dt = Math.min(delta, 1 / 30);
+    let target = 0;
+    if (show) {
+      st.wait += dt;
+      if (st.wait > BUILD_TIME * 0.8 || reducedMotion()) target = 1;
+    } else st.wait = 0;
+    const next = reducedMotion() ? target : target > m.opacity ? Math.min(target, m.opacity + dt / 0.35) : Math.max(target, m.opacity - dt / 0.2);
+    if (next !== m.opacity || (show && st.wait <= BUILD_TIME * 0.8)) invalidate();
+    m.opacity = next;
+    line.visible = m.opacity > 0;
+  });
+  return <primitive object={line} />;
+}
+
 /** Χτίσιμο των κρυφών γραμμών: κάθε ακμή «τραβιέται» σε SEGMENT_TIME, η μία μετά την άλλη, σε BUILD_TIME συνολικά. */
 const BUILD_TIME = 1.5;
 const SEGMENT_TIME = 0.35;
@@ -408,26 +514,7 @@ function HiddenEdges({ edges, show, onHidden }: { edges: Float32Array; show: boo
     // σε κύρια όψη) έχουν τις παύλες στο ίδιο σημείο, αλλιώς η μία γέμιζε τα κενά της άλλης και
     // η γραμμή έδειχνε συνεχής.
     const fullPos = pos.array.slice();
-    const fullDist = new Float32Array(dist.array.length);
-    for (let i = 0; i < fullPos.length / 6; i++) {
-      const o = i * 6;
-      let dx = fullPos[o + 3] - fullPos[o];
-      let dy = fullPos[o + 4] - fullPos[o + 1];
-      let dz = fullPos[o + 5] - fullPos[o + 2];
-      const len = Math.hypot(dx, dy, dz) || 1;
-      dx /= len;
-      dy /= len;
-      dz /= len;
-      // ίδια φορά για παράλληλες ακμές, όποια κι αν είναι η σειρά των άκρων τους
-      const e = 1e-6;
-      if (dx < -e || (Math.abs(dx) <= e && (dy < -e || (Math.abs(dy) <= e && dz < 0)))) {
-        dx = -dx;
-        dy = -dy;
-        dz = -dz;
-      }
-      fullDist[i * 2] = fullPos[o] * dx + fullPos[o + 1] * dy + fullPos[o + 2] * dz;
-      fullDist[i * 2 + 1] = fullPos[o + 3] * dx + fullPos[o + 4] * dy + fullPos[o + 5] * dz;
-    }
+    const fullDist = alignedDashDistances(fullPos);
     dist.array.set(fullDist);
     dist.needsUpdate = true;
     return { line: l, pos, dist, fullPos, fullDist };
@@ -500,6 +587,7 @@ interface ControllerProps {
 
 function SceneController({ part, scale, dimsMode, apiRef, slidingRef, overlayRef, onViewChange }: ControllerProps) {
   const camera = useThree((s) => s.camera) as OrthographicCamera;
+  const gl = useThree((s) => s.gl);
   // Ο έλεγχος κάμερας (makeDefault) μπαίνει στο store μετά την πρώτη απόδοση.
   const controls = useThree((s) => s.controls) as unknown as CameraControlsImpl | null;
   const size = useThree((s) => s.size);
@@ -521,6 +609,7 @@ function SceneController({ part, scale, dimsMode, apiRef, slidingRef, overlayRef
     const c = controls;
     if (!c) return;
     const { center, distance } = metrics;
+    c.smoothTime = 0.3; // ομαλή κίνηση όψης (η ροδέλα το μικραίνει προσωρινά)
     const d = dir.clone().normalize();
     c.normalizeRotations();
     void c.setLookAt(
@@ -606,15 +695,50 @@ function SceneController({ part, scale, dimsMode, apiRef, slidingRef, overlayRef
     c.dollyToCursor = true;
     c.smoothTime = 0.3;
     c.draggingSmoothTime = 0.06;
+    // Zoom (ροδέλα/τσίμπημα): λίγο πιο δυνατό από την προεπιλογή (~×1,9 ανά «κλικ» ροδέλας αντί ×1,67)
+    // και κυρίως πιο άμεσο: με τη ροδέλα η εξομάλυνση γίνεται 0,12 s αντί 0,3 s, ώστε να μη «σέρνεται».
+    // Οι κινήσεις αλλαγής όψης κρατούν το 0,3 s (βλ. place).
+    c.dollySpeed = 1.25;
+    const onWheel = () => {
+      c.smoothTime = 0.12;
+    };
+    gl.domElement.addEventListener('wheel', onWheel, { passive: true });
     c.minZoom = 1e-4;
     c.maxZoom = 1e5;
+    // Με απόδοση «κατ' απαίτηση» το πρώτο καρέ μετά από αδράνεια έχει τεράστιο delta (όσο ήταν ακίνητη
+    // η σκηνή): η κίνηση της κάμερας θα τελείωνε ακαριαία («πήδημα»). Περιορίζουμε το βήμα χρόνου.
+    const update = c.update.bind(c) as (delta: number) => boolean;
+    c.update = (delta: number) => update(Math.min(delta, 1 / 30));
+    // «Μαγνήτης» όψεων: όταν ο χρήστης αφήνει την περιστροφή κοντά σε μια όψη (μέσα σε SNAP_ANGLE),
+    // η κάμερα ισιώνει μόνη της και μπαίνει ακριβώς σε αυτήν.
+    const startDir = new Vector3();
     const onUserStart = () => {
       state.current.pending = null;
+      startDir.copy(currentDir());
+    };
+    const onUserEnd = () => {
+      const dir = currentDir();
+      if (dir.angleTo(startDir) < 0.01) return; // zoom ή μετακίνηση, όχι περιστροφή
+      let best: ViewId | null = null;
+      let bestAngle = SNAP_ANGLE;
+      for (const v of VIEWS) {
+        const a = dir.angleTo(viewBasis(v.dir).dir);
+        if (a < bestAngle) {
+          best = v.id;
+          bestAngle = a;
+        }
+      }
+      if (best) apiRef.current?.goTo(best);
     };
     c.addEventListener('controlstart', onUserStart);
+    c.addEventListener('controlend', onUserEnd);
     if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__opseisDebug = { camera, controls: c };
-    return () => c.removeEventListener('controlstart', onUserStart);
-  }, [controls, camera]);
+    return () => {
+      c.removeEventListener('controlstart', onUserStart);
+      c.removeEventListener('controlend', onUserEnd);
+      gl.domElement.removeEventListener('wheel', onWheel);
+    };
+  }, [controls, camera, gl]);
 
   useEffect(() => {
     state.current.lastSvg = '\u0000'; // αναγκαστικός επανυπολογισμός διαστάσεων
@@ -682,6 +806,7 @@ function SceneController({ part, scale, dimsMode, apiRef, slidingRef, overlayRef
       scale,
       mode: dimsMode,
       memory: s.labelMemory,
+      edges: part.edges,
     });
     if (svg !== s.lastSvg && overlayRef.current) {
       overlayRef.current.innerHTML = svg;
@@ -718,7 +843,7 @@ export function Viewer({ part, scale, dimsMode, showHidden, colorMode, theme, sh
         camera={{ position: [300, -300, 300], zoom: 4, near: 0.1, far: 10000 }}
         gl={{ antialias: true }}
       >
-        <color attach="background" args={[theme === 'dark' ? '#141c24' : '#f4f6f8']} />
+        <color attach="background" args={[themeInfo(theme).viewerBg]} />
         <CameraControls makeDefault />
         <SlidingParts
           part={part}

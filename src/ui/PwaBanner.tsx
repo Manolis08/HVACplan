@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { onPwaEvent, type PwaEvent } from '../lib/pwa';
+import { Icon } from './Icon';
 
 export function PwaBanner() {
   const [event, setEvent] = useState<PwaEvent | null>(null);
@@ -30,7 +31,7 @@ export function PwaBanner() {
         </>
       )}
       <button type="button" className="link-button" onClick={() => setHidden(true)} aria-label="Κλείσιμο ειδοποίησης">
-        ✕
+        <Icon name="close" />
       </button>
     </div>
   );

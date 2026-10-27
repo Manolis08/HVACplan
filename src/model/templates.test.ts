@@ -151,19 +151,19 @@ describe('Έδρανο με χελιδονοουρά (άσκηση με R20, Ø2
     expect(alongY.every(([a]) => a[2] <= 50 + 1e-6)).toBe(true);
   });
 
-  it('οπή λίπανσης Ø4 στα 35 από μπροστά: πραγματική τρύπα από την κορυφή ως την οπή του άξονα', () => {
-    expect(p.circles[1].center).toEqual([50, 35, 60]);
-    // κανένα τρίγωνο της κορυφής μέσα στον κύκλο της οπής (x−50)² + (y−35)² < 2²
+  it('οπή λίπανσης Ø4 στα 40 από μπροστά: πραγματική τρύπα από την κορυφή ως την οπή του άξονα', () => {
+    expect(p.circles[1].center).toEqual([50, 40, 60]);
+    // κανένα τρίγωνο της κορυφής μέσα στον κύκλο της οπής (x−50)² + (y−40)² < 2²
     let inside = 0;
     for (let i = 0; i < p.triangles.length; i += 9) {
       const cx = (p.triangles[i] + p.triangles[i + 3] + p.triangles[i + 6]) / 3;
       const cy = (p.triangles[i + 1] + p.triangles[i + 4] + p.triangles[i + 7]) / 3;
       const cz = (p.triangles[i + 2] + p.triangles[i + 5] + p.triangles[i + 8]) / 3;
-      if (cz > 66 && Math.hypot(cx - 50, cy - 35) < 1.5) inside++;
+      if (cz > 66 && Math.hypot(cx - 50, cy - 40) < 1.5) inside++;
     }
     expect(inside).toBe(0);
     // περίγραμμα της οπής πάνω στην κορυφή (z ≈ 69,9) ως ακμή
-    const ringTop = segments(p.edges).filter(([a, b]) => a[2] > 69.8 && b[2] > 69.8 && Math.hypot(a[0] - 50, a[1] - 35) < 2.01);
+    const ringTop = segments(p.edges).filter(([a, b]) => a[2] > 69.8 && b[2] > 69.8 && Math.hypot(a[0] - 50, a[1] - 40) < 2.01);
     expect(ringTop.length).toBe(24);
   });
 
@@ -181,14 +181,14 @@ describe('Κλιμακωτό με φτερό (20, 3, 13, 10, 5, 15, 15)', () => 
 
   it('διαστάσεις 35 × 15 × 15, όγκος από τα τρία μέρη, κλειστή επιφάνεια', () => {
     expect(size(p)).toEqual([35, 15, 15]);
-    expect(signedVolume(p.triangles)).toBeCloseTo(15 * 3 * 13 + 5 * 15 * 15 + 15 * 15 * 5, 6);
+    expect(signedVolume(p.triangles)).toBeCloseTo(17 * 3 * 13 + 3 * 15 * 15 + 15 * 15 * 5, 6);
     expect(isWatertight(p.triangles)).toBe(true);
   });
 
   it('φτερό ύψους 13 κρεμασμένο από την κορυφή: κενό 2 από κάτω, πάνω επιφάνεια ενιαία με την κολόνα', () => {
     // κάτω ακμές του φτερού στο z = 2
-    expect(hasEdge(p.edges, [0, 12, 2], [15, 12, 2])).toBe(true);
-    expect(hasEdge(p.edges, [15, 12, 2], [15, 15, 2])).toBe(true);
+    expect(hasEdge(p.edges, [0, 12, 2], [17, 12, 2])).toBe(true);
+    expect(hasEdge(p.edges, [17, 12, 2], [17, 15, 2])).toBe(true);
     // πάνω: φτερό και κολόνα στο ίδιο ύψος 15, χωρίς σκαλί
     expect(hasEdge(p.edges, [0, 15, 15], [20, 15, 15])).toBe(true);
     expect(p.bbox.max[2]).toBe(15);

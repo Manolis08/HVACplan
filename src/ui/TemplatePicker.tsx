@@ -1,5 +1,6 @@
 import { useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
 import type { TemplateDef } from '../model/types';
+import { Icon } from './Icon';
 
 // Μικρά εικονίδια με το χαρακτηριστικό προφίλ κάθε προτύπου.
 const ICONS: Record<string, ReactNode> = {
@@ -147,7 +148,7 @@ export function TemplatePicker({ templates, nameOf, value, onChange, onReorder, 
               onPointerCancel={onHandleUp}
               onKeyDown={(e) => onHandleKey(e, t.id)}
             >
-              ⠿
+              <Icon name="grip" size={14} />
             </button>
             {editing !== t.id && (
               <button
@@ -157,7 +158,7 @@ export function TemplatePicker({ templates, nameOf, value, onChange, onReorder, 
                 title="Μετονομασία"
                 onClick={() => startEdit(t)}
               >
-                ✎
+                <Icon name="pencil" size={14} />
               </button>
             )}
           </div>

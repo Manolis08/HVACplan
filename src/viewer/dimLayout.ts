@@ -53,6 +53,49 @@ export interface DimLayoutInput {
    * όσο χωράει εκεί, ώστε να μην «τρεμοπαίζει» ανάμεσα σε εναλλακτικές θέσεις όταν κινείται η κάμερα.
    */
   memory?: Map<string, number>;
+  /**
+   * Ακμές του σχήματος (x1,y1,z1,x2,y2,z2,…). Αν δοθούν, μια γραμμή επέκτασης που θα ξεκινούσε στον αέρα
+   * (το άκρο της διάστασης δεν πέφτει πάνω σε ακμή) ξεκινά από το πλησιέστερο σημείο του σχήματος στην
+   * ίδια ευθεία, π.χ. από την πλευρά του στρογγυλού μέρους αντί για το κενό δίπλα του.
+   */
+  edges?: Float32Array;
+}
+
+/** Βρίσκεται το σημείο p πάνω σε κάποια ακμή του σχήματος; */
+function onEdges(p: Vec3, edges: Float32Array, eps: number): boolean {
+  for (let i = 0; i < edges.length; i += 6) {
+    const ax = edges[i], ay = edges[i + 1], az = edges[i + 2];
+    const dx = edges[i + 3] - ax, dy = edges[i + 4] - ay, dz = edges[i + 5] - az;
+    const l2 = dx * dx + dy * dy + dz * dz;
+    let t = l2 > 0 ? ((p[0] - ax) * dx + (p[1] - ay) * dy + (p[2] - az) * dz) / l2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    if (Math.hypot(ax + t * dx - p[0], ay + t * dy - p[1], az + t * dz - p[2]) <= eps) return true;
+  }
+  return false;
+}
+
+/**
+ * Για άκρο p στον αέρα: ανάμεσα στις κορυφές με την ίδια συντεταγμένη στον άξονα της διάστασης,
+ * η πιο ακραία προς την πλευρά της μετατόπισης o (η πλησιέστερη στη γραμμή διάστασης)· σε ισοπαλία
+ * η πιο κοντινή στο p. Αν το p είναι ήδη πάνω στο σχήμα, μένει ως έχει.
+ */
+function extensionStart(p: Vec3, axis: number, o: Vec3, edges: Float32Array, eps: number): Vec3 {
+  if (onEdges(p, edges, eps)) return p;
+  let best: Vec3 | null = null;
+  let bestOut = -Infinity;
+  let bestDist = Infinity;
+  for (let i = 0; i < edges.length; i += 3) {
+    if (Math.abs(edges[i + axis] - p[axis]) > eps) continue;
+    const q: Vec3 = [edges[i], edges[i + 1], edges[i + 2]];
+    const out = q[0] * o[0] + q[1] * o[1] + q[2] * o[2];
+    const d = Math.hypot(q[0] - p[0], q[1] - p[1], q[2] - p[2]);
+    if (out > bestOut + eps || (Math.abs(out - bestOut) <= eps && d < bestDist)) {
+      best = q;
+      bestOut = out;
+      bestDist = d;
+    }
+  }
+  return best ?? p;
 }
 
 export interface DimStyle {
@@ -80,7 +123,7 @@ export interface DimStyle {
 }
 
 /** Οθόνη: μονάδες σε pixel. */
-export const SCREEN_STYLE: DimStyle = { gap: 14, step: 22, extGap: 3, extOver: 6, arrowL: 8, arrowW: 2.6, labelOff: 7, minLen: 0.5 };
+export const SCREEN_STYLE: DimStyle = { gap: 14, step: 22, extGap: 0, extOver: 6, arrowL: 8, arrowW: 2.6, labelOff: 7, minLen: 0.5 };
 
 /** Χαρτί: μονάδες σε mm (κείμενο 3,5 mm, γραμμές 0,25 mm). */
 export const PAPER_STYLE: DimStyle = {
@@ -253,6 +296,9 @@ interface Placed {
   len: number;
   n: P2; // κάθετο στη γραμμή στην οθόνη, προς την πλευρά της μετατόπισης
   group: string;
+  /** Αρχές των γραμμών επέκτασης στην οθόνη (πάνω στο σχήμα). */
+  EA: P2;
+  EB: P2;
 }
 
 /** SVG (εσωτερικό ενός <g>) με τις διαστάσεις για την τρέχουσα όψη. */
@@ -299,7 +345,15 @@ export function layoutDims(input: DimLayoutInput): string {
       const axis = [0, 1, 2].reduce((best, a) =>
         Math.abs(dim.b[a] - dim.a[a]) > Math.abs(dim.b[best] - dim.a[best]) ? a : best, 0);
       // Η 3D κατεύθυνση διαλέγει μόνο την πλευρά· η μετατόπιση γίνεται κάθετα στη γραμμή στην οθόνη.
-      placed.push({ dim, A, B, len, n, group: `${o.join(',')}|${axis}` });
+      // Αρχή γραμμής επέκτασης πάνω στο σχήμα, μόνο αν μένει στην ίδια ευθεία στην οθόνη (κύριες και
+      // σχεδόν κύριες όψεις)· αλλιώς οι γραμμές επέκτασης δεν θα ήταν παράλληλες.
+      const snap = (p: Vec3, P: P2): P2 => {
+        if (!input.edges) return P;
+        const span = Math.hypot(dim.b[0] - dim.a[0], dim.b[1] - dim.a[1], dim.b[2] - dim.a[2]);
+        const q = project(extensionStart(p, axis, o, input.edges, Math.max(1e-6, span * 1e-4)));
+        return Math.abs(dot2(sub(q, P), u)) <= Math.max(3, len * 0.03) ? q : P;
+      };
+      placed.push({ dim, A, B, len, n, group: `${o.join(',')}|${axis}`, EA: snap(dim.a, A), EB: snap(dim.b, B) });
       break;
     }
   }
@@ -319,7 +373,7 @@ export function layoutDims(input: DimLayoutInput): string {
   const axisView = Math.max(...viewDir.map(Math.abs)) > 0.999;
 
   for (const p of placed) {
-    const { A, B, n, len } = p;
+    const { A, B, n, len, EA, EB } = p;
     let m = 0;
     if (axisView || p.dim.overall) for (const c of projCorners) m = Math.max(m, dot2(sub(c, A), n));
     const dist = m + s.gap + (levels.get(p) ?? 0) * s.step;
@@ -330,8 +384,9 @@ export function layoutDims(input: DimLayoutInput): string {
     const u = mul(sub(B2, A2), 1 / len);
 
     const ext =
-      `M${pt(add(A, mul(d, s.extGap)))}L${pt(add(A2, mul(d, s.extOver)))}` +
-      `M${pt(add(B, mul(d, s.extGap)))}L${pt(add(B2, mul(d, s.extOver)))}`;
+      // γραμμές επέκτασης από το σχήμα, κάθετα, ως λίγο πέρα από τη γραμμή διάστασης
+      `M${pt(add(EA, mul(d, s.extGap)))}L${pt(add(EA, mul(d, dot2(sub(A2, EA), d) + s.extOver)))}` +
+      `M${pt(add(EB, mul(d, s.extGap)))}L${pt(add(EB, mul(d, dot2(sub(B2, EB), d) + s.extOver)))}`;
     let line: string;
     let arrows: string;
     const pad = s.arrowL * 0.75;
