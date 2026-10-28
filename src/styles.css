@@ -1572,6 +1572,52 @@ body,
   transition: none;
 }
 
+/* Κίνηση των διαστάσεων (παίζει όταν αλλάζει σχήμα ή λειτουργία, βλ. Viewer): οι γραμμές σχεδιάζονται,
+   οι ετικέτες και τα βέλη εμφανίζονται με μικρό «πήδημα», και στη σβήσιμο όλα ξεθωριάζουν. */
+.dims-overlay g.dims-enter .dim-ext,
+.dims-overlay g.dims-enter .dim-line {
+  stroke-dasharray: 2400;
+  stroke-dashoffset: 2400;
+  animation: dim-draw 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.dims-overlay g.dims-enter .dim-label,
+.dims-overlay g.dims-enter .dim-arrow {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: dim-pop 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+
+.dims-overlay g.dims-enter .dim-label {
+  animation-delay: 0.18s;
+}
+
+.dims-overlay g.dims-enter .dim-arrow {
+  animation-delay: 0.08s;
+}
+
+.dims-overlay g.dims-leave {
+  opacity: 0;
+  transition: opacity 0.24s ease;
+}
+
+@keyframes dim-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes dim-pop {
+  from {
+    opacity: 0;
+    scale: 0.4;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
 /* ---------- Πλήρης οθόνη προβολής ---------- */
 .pane-header {
   flex: 0 0 auto;
@@ -2196,4 +2242,247 @@ body {
 .viewer-pane.sheet-full .sheet-stage {
   position: absolute;
   inset: 0;
+}
+
+/* ---------- Τρίτη καρτέλα: Τ+Π ---------- */
+.pane-switch::before {
+  width: calc(100% / 3);
+}
+
+.pane-switch[data-pane='sheet']::before {
+  transform: translateX(100%);
+}
+
+.pane-switch[data-pane='tp']::before {
+  transform: translateX(200%);
+}
+
+.pane-header .pane-switch {
+  max-width: 440px;
+}
+
+.tp-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 8px 8px;
+  animation: pane-in var(--dur) var(--ease-out) both;
+}
+
+
+
+
+
+
+
+
+
+@media (max-width: 899px) {
+  .app-main.tp-mode {
+    display: block;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .app-main.tp-mode .viewer-pane {
+    height: auto;
+    min-height: 0;
+  }
+}
+
+/* Τ+Π: χωρίς πλαϊνή στήλη η προβολή πιάνει όλο το πλάτος. */
+.side-pane[hidden] {
+  display: none;
+}
+
+.app-main.tp-mode {
+  grid-template-columns: 1fr;
+}
+
+.app-main.tp-mode .viewer-pane {
+  height: auto;
+  flex: 1;
+}
+
+@media (max-width: 899px) {
+  .app-main.tp-mode {
+    display: flex;
+    flex-direction: column;
+  }
+  .app-main.tp-mode .viewer-pane {
+    flex: 1;
+    border-bottom: 0;
+  }
+}
+
+/* ---------- Τ+Π σε 3D ---------- */
+.tp-pane {
+  padding: 0;
+  gap: 0;
+}
+
+.tp-viewer {
+  flex: 1;
+  min-height: 0;
+}
+
+@media (max-width: 899px) {
+  .app-main.tp-mode .tp-pane {
+    min-height: calc(100dvh - 120px);
+  }
+}
+
+/* Στοιχεία που ακολουθούν το μοντέλο (θέση από το Viewer σε κάθε καρέ). */
+.viewer-anchors {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transition: opacity var(--dur-fast) ease;
+}
+
+.viewer-anchors.sliding {
+  opacity: 0;
+}
+
+.viewer-anchors > * {
+  pointer-events: auto;
+}
+
+/* Επίπεδο χεράκι 1 mm πάνω από το κομμάτι, με σκιά στην επιφάνεια (οι πίνακες --mh/--ms μπαίνουν από το TpView). */
+.tp-pin {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.tp-pin-hand,
+.tp-pin-shadow {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 24px;
+  height: 24px;
+  transform-origin: 0 0;
+}
+
+.tp-pin-hand {
+  transform: var(--mh);
+}
+
+.tp-pin-shadow {
+  transform: var(--ms);
+  color: #000;
+  opacity: 0.5;
+  filter: blur(1.2px);
+}
+
+.tp-pin-shadow .icon {
+  fill: currentColor;
+  stroke-width: 2;
+}
+
+.tp-hand {
+  touch-action: none;
+  display: block;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: color var(--dur-fast) ease;
+}
+
+.tp-hand .icon {
+  display: block;
+  width: 24px;
+  height: 24px;
+  fill: rgba(255, 255, 255, 0.12);
+  stroke-width: 2;
+}
+
+.tp-hand:hover,
+.tp-hand[aria-pressed='true'] {
+  color: var(--accent);
+}
+
+/* ο γενικός κανόνας «πάτημα» κουμπιού δεν ισχύει εδώ: το κουμπί ζει μέσα σε μετασχηματισμένο επίπεδο */
+.tp-hand:active {
+  transform: none !important;
+}
+
+/* Μπάρα που σέρνεται, παράλληλα στη μεγάλη ακμή */
+.tp-track {
+  position: absolute;
+  visibility: hidden;
+  height: 36px;
+  transform-origin: 0 50%;
+  display: flex;
+  align-items: center;
+}
+
+.tp-track input {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: grab;
+}
+
+.tp-track input:active {
+  cursor: grabbing;
+}
+
+.tp-track-label {
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--chip-bg);
+  color: var(--muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.tp-track-label strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Κουμπί αναπαραγωγής στο τέλος της μπάρας (μένει όρθιο όσο γέρνει η μπάρα) */
+.tp-play {
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  translate: 0 -50%;
+  rotate: calc(-1 * var(--ang, 0rad));
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--chip-bg);
+  color: var(--accent);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  pointer-events: auto;
+  transition:
+    border-color var(--dur-fast) ease,
+    background var(--dur-fast) ease;
+}
+
+.tp-play:hover {
+  border-color: var(--accent);
+  background: var(--accent-weak);
 }

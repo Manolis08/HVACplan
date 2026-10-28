@@ -153,7 +153,7 @@ export function SheetView({ part, blockedReason, projection, openMesh, fileName,
   const field = (label: string, value: string, set: (v: string) => void, placeholder = '') => (
     <label className="tb-field">
       <span>{label}</span>
-      <input type="text" value={value} placeholder={placeholder} onChange={(e) => set(e.target.value)} />
+      <input type="text" value={value} placeholder={placeholder} maxLength={60} onChange={(e) => set(e.target.value.slice(0, 60))} />
     </label>
   );
 

@@ -1,7 +1,7 @@
 import { CameraControls, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import CameraControlsImpl from 'camera-controls';
-import { useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref, type RefObject } from 'react';
+import { useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type Ref, type RefObject } from 'react';
 import {
   BufferAttribute,
   BufferGeometry,
@@ -13,16 +13,18 @@ import {
   MeshStandardMaterial,
   Object3D,
   OrthographicCamera,
+  PMREMGenerator,
   Vector3,
 } from 'three';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 import { edgeTopology, silhouettes } from '../drawing/hlr';
 import type { Scale } from '../lib/scale';
 import { themeInfo, type Theme } from '../lib/theme';
-import type { Part, Vec3 } from '../model/types';
-import { layoutDims, type DimsMode } from './dimLayout';
+import type { BBox, Part, Vec3 } from '../model/types';
+import { layoutDims, type DimsMode, type DimStyle } from './dimLayout';
 import { bboxCorners, detectView, fitZoom, viewBasis, viewById, VIEWS, type ViewId } from './views';
 
 // Το μοντέλο είναι Z-πάνω (όπως στο τεχνικό σχέδιο), άρα και η κάμερα.
@@ -44,6 +46,10 @@ interface ViewerProps {
   part: Part;
   scale: Scale;
   dimsMode: DimsMode;
+  /** Πυκνότητα των διαστάσεων στην οθόνη (προεπιλογή: κανονική). */
+  dimStyle?: DimStyle;
+  /** Ευρύτερο πλαίσιο για τα επίπεδα κοπής της κάμερας (π.χ. όλη η σκηνή όταν δείχνουμε ένα κομμάτι της). */
+  clipBox?: BBox;
   /** Κρυφές ακμές ως διακεκομμένες πάνω από το μοντέλο. */
   showHidden: boolean;
   /** Χρωματισμός εδρών ανάλογα με την όψη στην οποία κοιτούν. */
@@ -55,13 +61,52 @@ interface ViewerProps {
    */
   shape: { key: string; index: number };
   onViewChange: (view: ViewId | null) => void;
+  /**
+   * Καλείται σε κάθε καρέ με την προβολή σημείου του μοντέλου σε pixel της προβολής, ώστε στοιχεία
+   * του `overlay` να ακολουθούν το μοντέλο (π.χ. κουμπιά πάνω σε κομμάτια).
+   */
+  onFrame?: (project: Project, size: { width: number; height: number }) => void;
+  /** Στοιχεία πάνω από την προβολή, που τα τοποθετεί το `onFrame`. Κρύβονται όσο γλιστράνε τα σχήματα. */
+  overlay?: ReactNode;
+  /** Κομμάτι που σέρνεται ελεύθερα πάνω από το κανονικό σχήμα. */
+  floating?: FloatingPiece | null;
+  /** Χωρίς το γλίστρημα όταν αλλάζει σχήμα: το νέο μπαίνει αμέσως (η καρτέλα κάνει δική της μετάβαση). */
+  noSlide?: boolean;
+  /** Το κανονικό σχήμα (και οι διαστάσεις του) κρυμμένο, π.χ. όσο διαρκεί μια δική μας μετάβαση. */
+  hidePart?: boolean;
+  /** Κομμάτι με μεταβλητή διαφάνεια (0…1 από το opacityRef), που σβήνει ή εμφανίζεται. */
+  ghost?: { part: Part; opacityRef: RefObject<number> } | null;
+  /** Επιπλέον αντικείμενα μέσα στη σκηνή (π.χ. εργαλεία), που μπορούν να χρησιμοποιούν useFrame/useThree. */
+  scene?: ReactNode;
+  /** Σκούρο γκρι μεταλλικό υλικό (με δικό του φωτισμό περιβάλλοντος) αντί για το ουδέτερο. */
+  metal?: boolean;
   ref?: Ref<ViewerApi>;
 }
 
-function partMetrics(part: Part) {
+export type Project = (p: Vec3) => [number, number];
+
+/** Θέση και περιστροφή (rx, ry, rz σε rad, σειρά ZYX) του σημείου λαβής ενός κομματιού που σέρνεται. */
+export interface FloatPose {
+  pos: Vec3;
+  rot: Vec3;
+}
+
+/** Κομμάτι που κινείται ελεύθερα (π.χ. ragdoll): σχεδιάζεται ξεχωριστά και παίρνει τη στάση του από το poseRef σε κάθε καρέ. */
+export interface FloatingPiece {
+  part: Part;
+  /** σημείο λαβής στις συντεταγμένες του κομματιού: γύρω από αυτό γυρίζει */
+  pivot: Vec3;
+  poseRef: RefObject<FloatPose>;
+}
+
+function partMetrics(part: Part, clipBox?: BBox) {
   const { min, max } = part.bbox;
   const center = new Vector3((min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2);
-  const diag = Math.max(Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]), 1e-3);
+  const own = Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]);
+  // Το μέγεθος για τα επίπεδα κοπής μπορεί να είναι μεγαλύτερο από το κομμάτι: όσο η κάμερα πηγαίνει ομαλά
+  // από ένα πλαίσιο σε άλλο, το μοντέλο δεν πρέπει να κόβεται (να «εξαφανίζεται») στο ενδιάμεσο.
+  const wide = clipBox ? Math.hypot(clipBox.max[0] - clipBox.min[0], clipBox.max[1] - clipBox.min[1], clipBox.max[2] - clipBox.min[2]) : 0;
+  const diag = Math.max(own, wide, 1e-3);
   return { center, diag, distance: diag * 3 };
 }
 
@@ -78,11 +123,18 @@ export const FACE_COLORS = { top: '#00aa00', front: '#ff0000', side: '#0000ff', 
 /** Γωνία μέσα στην οποία η περιστροφή «κουμπώνει» σε όψη όταν αφήνεις το ποντίκι/δάχτυλο (~10°). */
 const SNAP_ANGLE = (10 * Math.PI) / 180;
 
+/** Διάρκεια της κίνησης των διαστάσεων: είσοδος (γραμμές που σχεδιάζονται, ετικέτες που εμφανίζονται) και έξοδος. */
+const DIMS_ENTER_MS = 650;
+const DIMS_LEAVE_MS = 260;
+
 /** Διάρκεια της «υγρής μπογιάς» των χρωμάτων όψεων (s). */
 const PAINT_TIME = 1;
 
 /** Ουδέτερο χρώμα του μοντέλου όταν τα χρώματα όψεων είναι κλειστά. */
 const PLAIN_COLOR = '#c7d3e0';
+
+/** Σκούρο γκρι με λίγη μεταλλική λάμψη (π.χ. για τα Τ και Π, που είναι από χάλυβα). */
+const METAL_COLOR = '#5a6068';
 
 function reducedMotion() {
   return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -95,7 +147,16 @@ export function faceColorKey(nx: number, ny: number, nz: number): keyof typeof F
   return 'other';
 }
 
-function PartMesh({ part, showHidden, colorMode }: { part: Part; showHidden: boolean; colorMode: boolean }) {
+interface PartMeshProps {
+  part: Part;
+  showHidden: boolean;
+  colorMode: boolean;
+  metal?: boolean;
+  /** διαφάνεια 0…1 σε κάθε καρέ (για κομμάτια που σβήνουν/εμφανίζονται) */
+  opacityRef?: RefObject<number>;
+}
+
+function PartMesh({ part, showHidden, colorMode, metal = false, opacityRef }: PartMeshProps) {
   const geometry = useMemo(() => {
     const g = new BufferGeometry();
     g.setAttribute('position', new BufferAttribute(part.triangles, 3));
@@ -170,8 +231,9 @@ function PartMesh({ part, showHidden, colorMode }: { part: Part; showHidden: boo
   const material = useMemo(() => {
     const m = new MeshStandardMaterial({
       vertexColors: true,
-      roughness: 0.85,
-      metalness: 0,
+      transparent: !!opacityRef,
+      roughness: metal ? 0.55 : 0.85,
+      metalness: metal ? 0.45 : 0,
       side: DoubleSide,
       polygonOffset: true,
       polygonOffsetFactor: 1,
@@ -182,7 +244,7 @@ function PartMesh({ part, showHidden, colorMode }: { part: Part; showHidden: boo
       shader.uniforms.uPaintTime = paintTime.current;
       shader.uniforms.uBoxMin = paintBox.current.min;
       shader.uniforms.uBoxSize = paintBox.current.size;
-      shader.uniforms.uPlain = { value: new Color(PLAIN_COLOR) };
+      shader.uniforms.uPlain = { value: new Color(metal ? METAL_COLOR : PLAIN_COLOR) };
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\nvarying vec3 vPaintPos;')
         .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPaintPos = transformed;');
@@ -209,7 +271,7 @@ float paintNoise(vec3 x) {
                  mix(paintHash(i + vec3(0, 1, 1)), paintHash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
 }`)
         .replace('#include <color_fragment>', `
-vec3 q = (vPaintPos - uBoxMin) / uBoxSize;
+vec3 q = clamp((vPaintPos - uBoxMin) / uBoxSize, 0.0, 1.0);
 // ύψος της μπογιάς: κυρίως από κάτω προς τα πάνω, λίγο λοξά για πιο ζωντανό μέτωπο
 float coord = q.z * 0.72 + q.x * 0.18 + q.y * 0.10;
 // ρευστό, κυματιστό μέτωπο: δύο κλίμακες θορύβου που κυλούν με τον χρόνο
@@ -225,11 +287,19 @@ diffuseColor.rgb = mix(uPlain, vColor.rgb, cover);
 diffuseColor.rgb += cover * (1.0 - cover) * 0.7;`);
     };
     return m;
-  }, []);
+  }, [metal]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => material.dispose(), [material]);
   const invalidate = useThree((s) => s.invalidate);
   useEffect(() => invalidate(), [colorMode, invalidate]);
   useFrame((_, delta) => {
+    if (opacityRef) {
+      const o = Math.min(1, Math.max(0, opacityRef.current));
+      material.opacity = o;
+      material.depthWrite = o > 0.98;
+      edges.material.opacity = o;
+      edges.visible = o > 0.01;
+      invalidate(); // όσο υπάρχει, η διαφάνεια μπορεί να αλλάζει σε κάθε καρέ
+    }
     const mix = colorMix.current;
     const target = colorMode ? 1 : 0;
     if (mix.value === target) return;
@@ -276,6 +346,9 @@ interface SlidingProps {
   shape: { key: string; index: number };
   showHidden: boolean;
   colorMode: boolean;
+  metal: boolean;
+  noSlide: boolean;
+  hidden: boolean;
   /** true όσο διαρκεί η μετάβαση: η σκηνή δεν αλλάζει κάμερα μόνη της. */
   slidingRef: RefObject<boolean>;
   apiRef: RefObject<SceneApi | null>;
@@ -286,7 +359,7 @@ interface SlidingProps {
  * Το τρέχον σχήμα, και όσο διαρκεί η μετάβαση και το προηγούμενο. Μετακινούνται κατά μήκος του
  * «δεξιά» της κάμερας: προς τα εμπρός στη σειρά το νέο έρχεται από δεξιά και το παλιό φεύγει αριστερά.
  */
-function SlidingParts({ part, shape, showHidden, colorMode, slidingRef, apiRef, onSlidingChange }: SlidingProps) {
+function SlidingParts({ part, shape, showHidden, colorMode, metal, noSlide, hidden, slidingRef, apiRef, onSlidingChange }: SlidingProps) {
   const camera = useThree((s) => s.camera) as OrthographicCamera;
   const invalidate = useThree((s) => s.invalidate);
   const inRef = useRef<Group>(null);
@@ -314,7 +387,7 @@ function SlidingParts({ part, shape, showHidden, colorMode, slidingRef, apiRef, 
     last.current = { part, shape };
     if (prev.shape.key === shape.key) return;
     const dir = prev.shape.index < 0 || shape.index < 0 ? 0 : Math.sign(shape.index - prev.shape.index);
-    if (!dir || reducedMotion()) return;
+    if (!dir || noSlide || reducedMotion()) return;
     // ήδη φεύγει ένα σχήμα (γρήγορα διαδοχικά κλικ): συνεχίζει να φεύγει, απλώς θα μπει το νεότερο
     if (anim.current.phase === 'out') {
       hideIncoming(true);
@@ -360,12 +433,12 @@ function SlidingParts({ part, shape, showHidden, colorMode, slidingRef, apiRef, 
 
   return (
     <>
-      <group ref={inRef}>
-        <PartMesh part={part} showHidden={showHidden} colorMode={colorMode} />
+      <group ref={inRef} visible={!hidden}>
+        <PartMesh part={part} showHidden={showHidden} colorMode={colorMode} metal={metal} />
       </group>
       {outgoing && (
         <group ref={outRef} key={outgoing.id}>
-          <PartMesh part={outgoing.part} showHidden={showHidden} colorMode={colorMode} />
+          <PartMesh part={outgoing.part} showHidden={showHidden} colorMode={colorMode} metal={metal} />
         </group>
       )}
     </>
@@ -575,17 +648,65 @@ function HiddenEdges({ edges, show, onHidden }: { edges: Float32Array; show: boo
   return <primitive object={line} />;
 }
 
+/** Απαλό «στούντιο» για τις αντανακλάσεις του μετάλλου (δημιουργείται τοπικά, χωρίς αρχεία από το διαδίκτυο). */
+function StudioEnvironment() {
+  const gl = useThree((s) => s.gl);
+  const scene = useThree((s) => s.scene);
+  const invalidate = useThree((s) => s.invalidate);
+  useEffect(() => {
+    const pmrem = new PMREMGenerator(gl);
+    const room = new RoomEnvironment();
+    const target = pmrem.fromScene(room, 0.04);
+    scene.environment = target.texture;
+    scene.environmentIntensity = 0.35;
+    invalidate();
+    return () => {
+      scene.environment = null;
+      target.dispose();
+      room.dispose();
+      pmrem.dispose();
+      invalidate();
+    };
+  }, [gl, scene, invalidate]);
+  return null;
+}
+
+function FloatingMesh({ piece, showHidden, colorMode, metal }: { piece: FloatingPiece; showHidden: boolean; colorMode: boolean; metal: boolean }) {
+  const group = useRef<Group>(null);
+  const invalidate = useThree((s) => s.invalidate);
+  // όσο υπάρχει το κομμάτι, ζητάμε συνεχώς νέο καρέ (η σκηνή είναι «κατ’ απαίτηση»)
+  useFrame(() => {
+    const g = group.current;
+    if (!g) return;
+    const { pos, rot } = piece.poseRef.current;
+    g.position.set(pos[0], pos[1], pos[2]);
+    g.rotation.set(rot[0], rot[1], rot[2], 'ZYX');
+    invalidate();
+  });
+  const [px, py, pz] = piece.pivot;
+  return (
+    <group ref={group}>
+      <group position={[-px, -py, -pz]}>
+        <PartMesh part={piece.part} showHidden={showHidden} colorMode={colorMode} metal={metal} />
+      </group>
+    </group>
+  );
+}
+
 interface ControllerProps {
   part: Part;
   scale: Scale;
   dimsMode: DimsMode;
+  dimStyle?: DimStyle;
+  clipBox?: BBox;
   apiRef: RefObject<SceneApi | null>;
   slidingRef: RefObject<boolean>;
   overlayRef: RefObject<SVGGElement | null>;
   onViewChange: (view: ViewId | null) => void;
+  onFrameRef: RefObject<ViewerProps['onFrame']>;
 }
 
-function SceneController({ part, scale, dimsMode, apiRef, slidingRef, overlayRef, onViewChange }: ControllerProps) {
+function SceneController({ part, scale, dimsMode, dimStyle, clipBox, apiRef, slidingRef, overlayRef, onViewChange, onFrameRef }: ControllerProps) {
   const camera = useThree((s) => s.camera) as OrthographicCamera;
   const gl = useThree((s) => s.gl);
   // Ο έλεγχος κάμερας (makeDefault) μπαίνει στο store μετά την πρώτη απόδοση.
@@ -593,7 +714,7 @@ function SceneController({ part, scale, dimsMode, apiRef, slidingRef, overlayRef
   const size = useThree((s) => s.size);
   const invalidate = useThree((s) => s.invalidate);
   const lightRef = useRef<DirectionalLight>(null);
-  const metrics = useMemo(() => partMetrics(part), [part]);
+  const metrics = useMemo(() => partMetrics(part, clipBox), [part, clipBox]);
   const corners = useMemo(() => bboxCorners(part.bbox), [part]);
 
   const state = useRef({
@@ -602,7 +723,21 @@ function SceneController({ part, scale, dimsMode, apiRef, slidingRef, overlayRef
     lastSvg: '',
     initialised: false,
     labelMemory: new Map<string, number>(),
+    /** κομμάτι και λειτουργία διαστάσεων της τελευταίας εικόνας· αλλαγή τους παίζει την είσοδο των διαστάσεων */
+    lastPart: null as Part | null,
+    lastDims: null as DimsMode | null,
+    leaveTimer: 0,
+    enterTimer: 0,
   });
+
+  // Ξεκαθαρίζει τα χρονόμετρα των κινούμενων διαστάσεων αν φύγει η σκηνή.
+  useEffect(() => {
+    const st = state.current;
+    return () => {
+      window.clearTimeout(st.leaveTimer);
+      window.clearTimeout(st.enterTimer);
+    };
+  }, []);
 
   // Τοποθέτηση κάμερας: ίδια κατεύθυνση, κέντρο στο μοντέλο, zoom ώστε να χωρά.
   const place = (dir: Vector3, animate: boolean) => {
@@ -743,7 +878,7 @@ function SceneController({ part, scale, dimsMode, apiRef, slidingRef, overlayRef
   useEffect(() => {
     state.current.lastSvg = '\u0000'; // αναγκαστικός επανυπολογισμός διαστάσεων
     invalidate();
-  }, [scale, dimsMode, part, invalidate]);
+  }, [scale, dimsMode, dimStyle, part, invalidate]);
 
   // Σχεδίαση μόνο όταν χρειάζεται: όταν η σελίδα ξαναγίνεται ορατή (επιστροφή από άλλη
   // εφαρμογή/καρτέλα), ζητάμε νέο καρέ, γιατί ο browser μπορεί να έχει καθαρίσει τον καμβά.
@@ -799,6 +934,7 @@ function SceneController({ part, scale, dimsMode, apiRef, slidingRef, overlayRef
       return [((tmp.v.x + 1) / 2) * size.width, ((1 - tmp.v.y) / 2) * size.height];
     };
     const svg = layoutDims({
+      style: dimStyle,
       dims: part.dims,
       project,
       viewDir: [tmp.dir.x, tmp.dir.y, tmp.dir.z],
@@ -809,9 +945,38 @@ function SceneController({ part, scale, dimsMode, apiRef, slidingRef, overlayRef
       edges: part.edges,
     });
     if (svg !== s.lastSvg && overlayRef.current) {
-      overlayRef.current.innerHTML = svg;
+      const g = overlayRef.current;
+      // αλλαγή κομματιού ή λειτουργίας διαστάσεων → κινούμενη είσοδος· η περιστροφή δεν την ξαναπαίζει
+      const changed = s.lastPart !== part || s.lastDims !== dimsMode;
+      s.lastPart = part;
+      s.lastDims = dimsMode;
+      window.clearTimeout(s.leaveTimer);
+      window.clearTimeout(s.enterTimer);
+      if (svg === '') {
+        // σβήσιμο: οι διαστάσεις μένουν ένα λεπτό ενώ χάνονται, μετά φεύγουν
+        if (g.innerHTML && !reducedMotion()) {
+          g.classList.add('dims-leave');
+          s.leaveTimer = window.setTimeout(() => {
+            g.innerHTML = '';
+            g.classList.remove('dims-leave');
+          }, DIMS_LEAVE_MS);
+        } else {
+          g.innerHTML = '';
+          g.classList.remove('dims-leave');
+        }
+      } else {
+        g.classList.remove('dims-leave');
+        g.innerHTML = svg;
+        if (changed && !reducedMotion()) {
+          g.classList.add('dims-enter');
+          s.enterTimer = window.setTimeout(() => g.classList.remove('dims-enter'), DIMS_ENTER_MS);
+        } else {
+          g.classList.remove('dims-enter');
+        }
+      }
       s.lastSvg = svg;
     }
+    onFrameRef.current?.(project, size);
   });
 
   return (
@@ -822,7 +987,9 @@ function SceneController({ part, scale, dimsMode, apiRef, slidingRef, overlayRef
   );
 }
 
-export function Viewer({ part, scale, dimsMode, showHidden, colorMode, theme, shape, onViewChange, ref }: ViewerProps) {
+export function Viewer({ part, scale, dimsMode, dimStyle, clipBox, showHidden, colorMode, theme, shape, onViewChange, onFrame, overlay, floating, metal = false, noSlide = false, hidePart = false, ghost, scene, ref }: ViewerProps) {
+  const onFrameRef = useRef(onFrame);
+  onFrameRef.current = onFrame;
   const apiRef = useRef<SceneApi | null>(null);
   const slidingRef = useRef(false);
   // Όσο γλιστράνε τα σχήματα, οι διαστάσεις κρύβονται (θα έδειχναν στη λάθος θέση).
@@ -845,23 +1012,33 @@ export function Viewer({ part, scale, dimsMode, showHidden, colorMode, theme, sh
       >
         <color attach="background" args={[themeInfo(theme).viewerBg]} />
         <CameraControls makeDefault />
+        {metal && <StudioEnvironment />}
         <SlidingParts
           part={part}
           shape={shape}
           showHidden={showHidden}
           colorMode={colorMode}
+          metal={metal}
+          noSlide={noSlide}
+          hidden={hidePart}
           slidingRef={slidingRef}
           apiRef={apiRef}
           onSlidingChange={setSliding}
         />
+        {ghost && <PartMesh part={ghost.part} showHidden={false} colorMode={colorMode} metal={metal} opacityRef={ghost.opacityRef} />}
+        {scene}
+        {floating && <FloatingMesh piece={floating} showHidden={showHidden} colorMode={colorMode} metal={metal} />}
         <SceneController
           part={part}
           scale={scale}
           dimsMode={dimsMode}
+          dimStyle={dimStyle}
+          clipBox={clipBox}
           apiRef={apiRef}
           slidingRef={slidingRef}
           overlayRef={overlayRef}
           onViewChange={onViewChange}
+          onFrameRef={onFrameRef}
         />
         <GizmoHelper alignment="top-left" margin={[40, 84]}>
           <GizmoViewport
@@ -872,9 +1049,14 @@ export function Viewer({ part, scale, dimsMode, showHidden, colorMode, theme, sh
           />
         </GizmoHelper>
       </Canvas>
-      <svg className={`dims-overlay${sliding ? ' sliding' : ''}`} aria-hidden="true">
+      <svg className={`dims-overlay${sliding || hidePart ? ' sliding' : ''}`} aria-hidden="true">
         <g ref={overlayRef} />
       </svg>
+      {overlay && (
+        <div className={`viewer-anchors${sliding ? ' sliding' : ''}`}>
+          {overlay}
+        </div>
+      )}
     </div>
   );
 }

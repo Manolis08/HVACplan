@@ -19,6 +19,7 @@ import { TemplatePicker } from './ui/TemplatePicker';
 import { SheetLock } from './ui/SheetLock';
 import { SheetView } from './ui/SheetView';
 import { ThemePicker } from './ui/ThemePicker';
+import { TpView } from './ui/TpView';
 import { ViewToolbar } from './ui/ViewToolbar';
 import type { DimsMode } from './viewer/dimLayout';
 import { FACE_COLORS, Viewer, type ViewerApi } from './viewer/Viewer';
@@ -61,7 +62,7 @@ export default function App() {
   const nameOf = (t: { id: string; name: string }) => templateNames[t.id] ?? t.name;
   const [view, setView] = useState<ViewId | null>('iso');
   const viewerRef = useRef<ViewerApi>(null);
-  const [pane, setPane] = useState<'3d' | 'sheet'>('3d');
+  const [pane, setPane] = useState<'3d' | 'sheet' | 'tp'>('3d');
   const [theme, setTheme] = useState<Theme>(initialTheme);
   useEffect(() => applyTheme(theme), [theme]);
   // Κρυφές γραμμές στο 3D: σβηστές σε κάθε άνοιγμα της εφαρμογής.
@@ -314,7 +315,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className={`app-main${pane === 'sheet' ? ' sheet-mode' : ''}`}>
+      <main className={`app-main${pane === 'sheet' ? ' sheet-mode' : pane === 'tp' ? ' tp-mode' : ''}`}>
         <section
           ref={viewerPaneRef}
           className={`viewer-pane${cssFullscreen ? ' css-fullscreen' : ''}${fullscreen && pane === 'sheet' ? ' sheet-full' : ''}`}
@@ -339,6 +340,12 @@ export default function App() {
               {!sheetUnlocked && <Icon name="lock" size={15} className="tab-lock" />}
               Φύλλο όψεων
             </button>
+            <button type="button" role="tab" aria-selected={pane === 'tp'} onClick={() => {
+                setScaleOpen(false);
+                setPane('tp');
+              }}>
+              Τ+Π
+            </button>
           </div>
           </div>
           {pane === 'sheet' && (
@@ -354,6 +361,7 @@ export default function App() {
               overlay={fullscreenButton}
             />
           )}
+          {pane === 'tp' && <TpView theme={theme} dimsMode={dimsMode} showHidden={showHidden} colorMode={colorMode} />}
           <div className="viewer" hidden={pane !== '3d'}>
             {fullscreenButton}
             <Viewer
@@ -414,7 +422,8 @@ export default function App() {
           )}
         </section>
 
-        <aside className="side-pane">
+        {/* Στην καρτέλα Τ+Π η πλαϊνή στήλη (σχήματα, διαστάσεις) δεν χρειάζεται. */}
+        <aside className="side-pane" hidden={pane === 'tp'}>
           <section className="card">
             <div className="segmented mode-switch" role="radiogroup" aria-label="Τρόπος εισαγωγής">
               <button type="button" role="radio" aria-checked={!fileMode} onClick={() => setMode('template')}>

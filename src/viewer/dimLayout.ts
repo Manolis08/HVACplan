@@ -116,6 +116,11 @@ export interface DimStyle {
    */
   minLen: number;
   /**
+   * Σφιχτή τοποθέτηση: κάθε διάσταση μπαίνει κοντά στη δική της ακμή, όχι έξω από ολόκληρο το σχήμα
+   * (και οι συνολικές διαστάσεις δεν απομακρύνονται).
+   */
+  tight?: boolean;
+  /**
    * Φύλλο χαρτιού: ρητά χρώματα/πάχη (όχι CSS) και κείμενο παράλληλο στη γραμμή διάστασης
    * (κάθετες: αριστερή πλευρά −90°, δεξιά +90°· οριζόντιες 0°).
    */
@@ -124,6 +129,9 @@ export interface DimStyle {
 
 /** Οθόνη: μονάδες σε pixel. */
 export const SCREEN_STYLE: DimStyle = { gap: 14, step: 22, extGap: 0, extOver: 6, arrowL: 8, arrowW: 2.6, labelOff: 7, minLen: 0.5 };
+
+/** Πιο μαζεμένες διαστάσεις (π.χ. στο Τ+Π, όπου μετρά να φαίνονται καθαρά οι αριθμοί και όχι η απόσταση). */
+export const COMPACT_STYLE: DimStyle = { gap: 7, step: 13, extGap: 0, extOver: 3, arrowL: 7, arrowW: 2.4, labelOff: 4, minLen: 0.5, tight: true };
 
 /** Χαρτί: μονάδες σε mm (κείμενο 3,5 mm, γραμμές 0,25 mm). */
 export const PAPER_STYLE: DimStyle = {
@@ -375,7 +383,7 @@ export function layoutDims(input: DimLayoutInput): string {
   for (const p of placed) {
     const { A, B, n, len, EA, EB } = p;
     let m = 0;
-    if (axisView || p.dim.overall) for (const c of projCorners) m = Math.max(m, dot2(sub(c, A), n));
+    if (!s.tight && (axisView || p.dim.overall)) for (const c of projCorners) m = Math.max(m, dot2(sub(c, A), n));
     const dist = m + s.gap + (levels.get(p) ?? 0) * s.step;
     const off = mul(n, dist);
     const d = n;

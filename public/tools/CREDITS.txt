@@ -1,0 +1,16 @@
+Μοντέλα εργαλείων (μόνο η γεωμετρία, χωρίς υφές) για την κίνηση κατεργασίας της καρτέλας Τ+Π.
+
+drill.glb
+  "Drill "Soviet"" — Sergey Khanin (https://sketchfab.com/Sergey.Khanin)
+  https://sketchfab.com/3d-models/drill-soviet-659d98a6051b4438a66a30b96931234e
+  Άδεια: CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+  Αλλαγές: αφαιρέθηκαν οι υφές· στην εφαρμογή εμφανίζεται ημιδιαφανές και σε άλλη κλίμακα.
+
+hacksaw.glb
+  "PB100 Hacksaw SM" — Makovetkyi Volodymyr (https://sketchfab.com/pbr-scans)
+  https://sketchfab.com/3d-models/pb100-hacksaw-sm-449724f69c8f48fcbb372e712853e50b
+  Άδεια: CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+  Αλλαγές: αφαιρέθηκαν οι υφές· στην εφαρμογή εμφανίζεται ημιδιαφανές και σε άλλη κλίμακα.
+
+file.glb
+  Μεταλλική λίμα (εξαγωγή από three.js GLTFExporter).
