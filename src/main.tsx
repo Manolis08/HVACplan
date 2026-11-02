@@ -1,6 +1,8 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
+import { Intro } from './intro/Intro';
+import { IpadPointer } from './ui/ipad-pointer';
 import { registerServiceWorker } from './lib/pwa';
 import { applyTheme, initialTheme } from './lib/theme';
 import './styles.css';
@@ -28,5 +30,7 @@ registerServiceWorker();
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />
+    <Intro />
+    <IpadPointer />
   </StrictMode>,
 );

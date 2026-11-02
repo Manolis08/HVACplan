@@ -42,7 +42,9 @@ export function serviceWorker(): Plugin {
       const hash = createHash('sha256').update(template);
       for (const f of files) hash.update(f).update(readFileSync(join(outDir, f)));
       const version = hash.digest('hex').slice(0, 12);
-      const assets = ['./', ...files.map((f) => `./${f}`)];
+      // Το intro έχει μία σειρά εικόνων ανά διάταξη και φόντο· ο χρήστης χρειάζεται μόνο μία, οπότε δεν
+      // αποθηκεύονται όλες από πριν: ο service worker κρατά όποια παίξει (μετρούν όμως στην έκδοση).
+      const assets = ['./', ...files.filter((f) => !f.startsWith('intro/')).map((f) => `./${f}`)];
       writeFileSync(
         join(outDir, 'sw.js'),
         template.replace('__VERSION__', version).replace('__ASSETS__', JSON.stringify(assets, null, 2)),

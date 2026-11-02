@@ -1,0 +1,48 @@
+/* Δρομέας σαν του iPad (βλ. ipad-pointer.tsx). Ενεργός μόνο όταν η συσκευή έχει ποντίκι, trackpad ή γραφίδα. */
+
+.ipad-pointer,
+.ipad-pointer * {
+  cursor: none !important;
+}
+
+/* στα πεδία κειμένου μένει το κανονικό γράμμα, όπως στο iPad */
+.ipad-pointer :is(input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='button']), textarea, [contenteditable='true']) {
+  cursor: text !important;
+}
+
+.ipad-pointer-dot {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  box-sizing: border-box;
+  pointer-events: none;
+  z-index: 3000;
+  background: rgb(120 124 132 / 0.32);
+  border: 1px solid rgb(255 255 255 / 0.4);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.18);
+  will-change: transform;
+  transition:
+    width 0.22s cubic-bezier(0.2, 0.8, 0.2, 1),
+    height 0.22s cubic-bezier(0.2, 0.8, 0.2, 1),
+    border-radius 0.22s cubic-bezier(0.2, 0.8, 0.2, 1),
+    background-color 0.22s ease,
+    opacity 0.18s ease,
+    scale 0.12s ease;
+}
+
+.ipad-pointer-dot.is-hidden {
+  opacity: 0;
+}
+
+/* πάνω σε κουμπί: ο κύκλος γίνεται σχήμα του κουμπιού· είναι διάφανος, ώστε να φαίνεται το κείμενο από κάτω */
+.ipad-pointer-dot.is-snap {
+  background: rgb(120 124 132 / 0.12);
+  border-color: rgb(255 255 255 / 0.25);
+}
+
+.ipad-pointer-dot.is-press {
+  scale: 0.86;
+}

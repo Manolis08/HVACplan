@@ -123,9 +123,14 @@ export const FACE_COLORS = { top: '#00aa00', front: '#ff0000', side: '#0000ff', 
 /** Γωνία μέσα στην οποία η περιστροφή «κουμπώνει» σε όψη όταν αφήνεις το ποντίκι/δάχτυλο (~10°). */
 const SNAP_ANGLE = (10 * Math.PI) / 180;
 
-/** Διάρκεια της κίνησης των διαστάσεων: είσοδος (γραμμές που σχεδιάζονται, ετικέτες που εμφανίζονται) και έξοδος. */
-const DIMS_ENTER_MS = 650;
-const DIMS_LEAVE_MS = 260;
+/**
+ * Οι διαστάσεις αλλάζουν με απαλό ξεθώριασμα (μόνο διαφάνεια), και μόνο όσες όντως εμφανίζονται ή φεύγουν: όταν
+ * αλλάζεις από «Όλες» σε «Απαραίτητες», οι κοινές διαστάσεις μένουν ακίνητες. Χρόνος σβησίματος (ms)· ο ίδιος και στο
+ * CSS (dim-fade-out).
+ */
+const DIMS_OUT_MS = 200;
+/** χρόνος εμφάνισης (ms)· ο ίδιος και στο CSS (dim-fade-in) */
+const DIMS_IN_MS = 240;
 
 /** Διάρκεια της «υγρής μπογιάς» των χρωμάτων όψεων (s). */
 const PAINT_TIME = 1;
@@ -336,8 +341,33 @@ diffuseColor.rgb += cover * (1.0 - cover) * 0.7;`);
  * προσαρμόζεται αμέσως στο νέο (εκτός οθόνης, δεν φαίνεται) και μπαίνει το νέο. Έτσι ένα μεγάλο σχήμα
  * δεν «φουσκώνει» ούτε κόβεται όταν η κάμερα κάνει zoom για ένα μικρότερο.
  */
-const SLIDE_OUT = 0.32;
-const SLIDE_IN = 0.38;
+const SLIDE_OUT = 0.4;
+/** Σβούρα: μόλις αλλάξεις σχήμα, το παλιό αρχίζει να γυρίζει γύρω από τον κάθετο άξονά του (επιταχύνοντας). Όσο
+ *  συνεχίζεις να αλλάζεις σχήμα, μένει στη θέση του και γυρίζει όλο και πιο γρήγορα, ανάλογα με το πόσο γρήγορα
+ *  πατάς. Όταν σταματήσεις (IDLE_MS χωρίς νέα αλλαγή), φεύγει αριστερά πάντα γυρίζοντας, το τελευταίο σχήμα μπαίνει
+ *  από δεξιά με την ίδια ταχύτητα, επιβραδύνει και κάθεται ακριβώς στην ισομετρική όψη. */
+const BASE_OMEGA = 12; // rad/s: ταχύτητα σβούρας με ένα μόνο κλικ
+const BOOST_PER_CLICK = 11; // rad/s που προστίθενται σε κάθε επιπλέον αλλαγή
+const BOOST_DECAY = 1.4; // 1/s: πόσο γρήγορα «ξεχνά» τα κλικ όταν σταματήσεις να πατάς
+const MAX_OMEGA = 60; // rad/s (~9,5 στροφές το δευτερόλεπτο)
+const IDLE_MS = 280;
+/** ελάχιστος χρόνος (s) επιβράδυνσης του νέου σχήματος ως την ισομετρική */
+const SETTLE_MIN = 0.3;
+
+/** Ταχύτητα στόχος της σβούρας (rad/s) για το τρέχον «κλικ boost». */
+export const omegaTarget = (boost: number) => Math.min(MAX_OMEGA, BASE_OMEGA + boost);
+
+/**
+ * Επιβράδυνση του νέου σχήματος: σταθερή, ώστε να σταματήσει ακριβώς σε ακέραιο αριθμό στροφών (= ισομετρική
+ * όψη), προχωρώντας D rad σε χρόνο T, με D τουλάχιστον όση απόσταση χρειάζεται για minTime δευτερόλεπτα.
+ */
+export function settlePlan(ang: number, omega: number, minTime: number) {
+  const TWO_PI = 2 * Math.PI;
+  const rem = (TWO_PI - (ang % TWO_PI)) % TWO_PI;
+  const dMin = (omega * minTime) / 2;
+  const D = rem + TWO_PI * Math.max(0, Math.ceil((dMin - rem) / TWO_PI));
+  return { D, T: (2 * D) / omega };
+}
 const easeIn = (t: number) => t * t;
 const easeOut = (t: number) => 1 - (1 - t) ** 3;
 
@@ -359,26 +389,53 @@ interface SlidingProps {
  * Το τρέχον σχήμα, και όσο διαρκεί η μετάβαση και το προηγούμενο. Μετακινούνται κατά μήκος του
  * «δεξιά» της κάμερας: προς τα εμπρός στη σειρά το νέο έρχεται από δεξιά και το παλιό φεύγει αριστερά.
  */
+/** Κέντρο του κουτιού του κομματιού (ή το αντίθετό του, για k = −1): γύρω από αυτό γυρίζει η σβούρα. */
+function bboxCenter(part: Part, k = 1): [number, number, number] {
+  const { min, max } = part.bbox;
+  return [k * (min[0] + max[0]) / 2, k * (min[1] + max[1]) / 2, k * (min[2] + max[2]) / 2];
+}
+
 function SlidingParts({ part, shape, showHidden, colorMode, metal, noSlide, hidden, slidingRef, apiRef, onSlidingChange }: SlidingProps) {
   const camera = useThree((s) => s.camera) as OrthographicCamera;
   const invalidate = useThree((s) => s.invalidate);
   const inRef = useRef<Group>(null);
   const outRef = useRef<Group>(null);
+  const spinInRef = useRef<Group>(null);
+  const spinOutRef = useRef<Group>(null);
   const last = useRef({ part, shape });
-  // phase: 'out' = φεύγει το παλιό, 'in' = μπαίνει το νέο, null = ακίνητα
-  const anim = useRef<{ phase: 'out' | 'in' | null; t: number; dir: number }>({ phase: null, t: 0, dir: 0 });
+  // phase: 'spin' = το παλιό σχήμα γυρίζει στη θέση του (όσο συνεχίζονται οι αλλαγές), 'out' = φεύγει γυρίζοντας,
+  // 'in' = μπαίνει το νέο και επιβραδύνει ως την ισομετρική, null = ακίνητα
+  const sp = useRef({
+    phase: null as 'spin' | 'out' | 'in' | null,
+    /** χρόνος μέσα στη φάση (s) */
+    t: 0,
+    dir: 1,
+    omega: 0,
+    ang: 0,
+    boost: 0,
+    lastClick: 0,
+    /** μετατόπιση (σε πλάτη οθόνης) του σχήματος που γυρίζει, που επιστρέφει στο κέντρο */
+    off: 0,
+    outIndex: 0,
+    T: 0,
+    ang0: 0,
+    omega0: 0,
+  });
   const [outgoing, setOutgoing] = useState<{ part: Part; id: number } | null>(null);
   const tmp = useMemo(() => new Vector3(), []);
 
   /** Μετατόπιση κατά k πλάτη οθόνης προς τα «δεξιά» της κάμερας (θετικό = δεξιά για dir = 1). */
   const shift = (g: Group | null, k: number) => {
     if (!g) return;
-    const w = ((camera.right - camera.left) / camera.zoom) * anim.current.dir;
+    const w = ((camera.right - camera.left) / camera.zoom) * sp.current.dir;
     tmp.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
     g.position.copy(tmp).multiplyScalar(k * w);
   };
   const hideIncoming = (hidden: boolean) => {
     if (inRef.current) inRef.current.visible = !hidden;
+  };
+  const spinTo = (g: Group | null, ang: number) => {
+    if (g) g.rotation.z = -ang;
   };
 
   // Πριν ζωγραφιστεί το νέο σχήμα: το βάζουμε ήδη έξω από την οθόνη, ώστε να μην «αναβοσβήσει».
@@ -386,44 +443,88 @@ function SlidingParts({ part, shape, showHidden, colorMode, metal, noSlide, hidd
     const prev = last.current;
     last.current = { part, shape };
     if (prev.shape.key === shape.key) return;
-    const dir = prev.shape.index < 0 || shape.index < 0 ? 0 : Math.sign(shape.index - prev.shape.index);
-    if (!dir || noSlide || reducedMotion()) return;
-    // ήδη φεύγει ένα σχήμα (γρήγορα διαδοχικά κλικ): συνεχίζει να φεύγει, απλώς θα μπει το νεότερο
-    if (anim.current.phase === 'out') {
-      hideIncoming(true);
-      return;
+    const s = sp.current;
+    if (s.phase === null && (prev.shape.index < 0 || shape.index < 0 || noSlide || reducedMotion())) return;
+    s.lastClick = performance.now();
+    if (s.phase === null) {
+      s.phase = 'spin';
+      s.t = 0;
+      s.omega = 0;
+      s.ang = 0;
+      s.boost = 0;
+      s.off = 0;
+      s.dir = Math.sign(shape.index - prev.shape.index) || 1;
+      s.outIndex = prev.shape.index;
+      slidingRef.current = true;
+      setOutgoing({ part: prev.part, id: Date.now() });
+      onSlidingChange(true);
+    } else {
+      s.boost += BOOST_PER_CLICK;
+      if (s.phase === 'out') {
+        // ήδη έφευγε: επιστρέφει στο κέντρο και συνεχίζει να γυρίζει
+        s.off = -easeIn(Math.min(1, s.t / SLIDE_OUT));
+      } else if (s.phase === 'in') {
+        // ήδη έμπαινε το (προηγούμενο) νέο σχήμα: γίνεται αυτό το σχήμα που γυρίζει
+        s.off = 1 - easeOut(Math.min(1, s.t / s.T));
+        setOutgoing({ part: prev.part, id: Date.now() });
+        if (inRef.current) inRef.current.position.set(0, 0, 0);
+        spinTo(spinInRef.current, 0);
+      }
+      s.phase = 'spin';
     }
-    anim.current = { phase: 'out', t: 0, dir };
-    slidingRef.current = true;
-    setOutgoing({ part: prev.part, id: Date.now() });
-    onSlidingChange(true);
     hideIncoming(true);
     invalidate();
   }, [part, shape.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useFrame((_, delta) => {
-    const a = anim.current;
-    if (!a.phase) return;
+    const s = sp.current;
+    if (!s.phase) return;
     const dt = Math.min(delta, 1 / 30);
-    if (a.phase === 'out') {
-      a.t = Math.min(1, a.t + dt / SLIDE_OUT);
-      shift(outRef.current, -easeIn(a.t));
-      if (a.t >= 1) {
-        // το παλιό βγήκε: κάμερα αμέσως στο νέο σχήμα, το νέο ξεκινά από την άλλη πλευρά
+    if (s.phase === 'spin') {
+      s.boost *= Math.exp(-dt * BOOST_DECAY);
+      const target = omegaTarget(s.boost);
+      s.omega += (target - s.omega) * (1 - Math.exp(-dt * 9));
+      s.ang += s.omega * dt;
+      s.off -= s.off * (1 - Math.exp(-dt * 10));
+      shift(outRef.current, s.off);
+      spinTo(spinOutRef.current, s.ang);
+      if (performance.now() - s.lastClick > IDLE_MS) {
+        s.phase = 'out';
+        s.t = 0;
+        s.dir = Math.sign(last.current.shape.index - s.outIndex) || s.dir;
+      }
+    } else if (s.phase === 'out') {
+      s.t += dt;
+      const u = Math.min(1, s.t / SLIDE_OUT);
+      s.ang += s.omega * dt;
+      shift(outRef.current, -easeIn(u));
+      spinTo(spinOutRef.current, s.ang);
+      if (u >= 1) {
+        // το παλιό βγήκε: κάμερα αμέσως στο νέο σχήμα, το νέο ξεκινά από την άλλη πλευρά, ήδη γυρίζοντας
         setOutgoing(null);
         apiRef.current?.snap();
         camera.updateMatrixWorld();
-        a.phase = 'in';
-        a.t = 0;
+        // επιβράδυνση σταθερή, ώστε να σταματήσει ακριβώς σε ακέραιο αριθμό στροφών (= ισομετρική όψη)
+        s.phase = 'in';
+        s.t = 0;
+        s.ang0 = s.ang;
+        s.omega0 = s.omega;
+        s.T = settlePlan(s.ang, s.omega, SETTLE_MIN).T;
         shift(inRef.current, 1);
+        spinTo(spinInRef.current, s.ang0);
         hideIncoming(false);
       }
     } else {
-      a.t = Math.min(1, a.t + dt / SLIDE_IN);
-      shift(inRef.current, 1 - easeOut(a.t));
-      if (a.t >= 1) {
+      s.t += dt;
+      const tt = Math.min(s.t, s.T);
+      const ang = s.ang0 + s.omega0 * tt - (s.omega0 * tt * tt) / (2 * s.T);
+      const u = Math.min(1, s.t / s.T);
+      shift(inRef.current, 1 - easeOut(u));
+      spinTo(spinInRef.current, ang);
+      if (u >= 1) {
         inRef.current?.position.set(0, 0, 0);
-        a.phase = null;
+        spinTo(spinInRef.current, 0);
+        s.phase = null;
         slidingRef.current = false;
         onSlidingChange(false);
       }
@@ -434,11 +535,19 @@ function SlidingParts({ part, shape, showHidden, colorMode, metal, noSlide, hidd
   return (
     <>
       <group ref={inRef} visible={!hidden}>
-        <PartMesh part={part} showHidden={showHidden} colorMode={colorMode} metal={metal} />
+        <group ref={spinInRef} position={bboxCenter(part)}>
+          <group position={bboxCenter(part, -1)}>
+            <PartMesh part={part} showHidden={showHidden} colorMode={colorMode} metal={metal} />
+          </group>
+        </group>
       </group>
       {outgoing && (
         <group ref={outRef} key={outgoing.id}>
-          <PartMesh part={outgoing.part} showHidden={showHidden} colorMode={colorMode} metal={metal} />
+          <group ref={spinOutRef} position={bboxCenter(outgoing.part)}>
+            <group position={bboxCenter(outgoing.part, -1)}>
+              <PartMesh part={outgoing.part} showHidden={showHidden} colorMode={colorMode} metal={metal} />
+            </group>
+          </group>
         </group>
       )}
     </>
@@ -726,16 +835,15 @@ function SceneController({ part, scale, dimsMode, dimStyle, clipBox, apiRef, sli
     /** κομμάτι και λειτουργία διαστάσεων της τελευταίας εικόνας· αλλαγή τους παίζει την είσοδο των διαστάσεων */
     lastPart: null as Part | null,
     lastDims: null as DimsMode | null,
-    leaveTimer: 0,
-    enterTimer: 0,
+    ghostTimer: 0,
+    fadeIn: null as { at: number; ids: Set<string> } | null,
   });
 
   // Ξεκαθαρίζει τα χρονόμετρα των κινούμενων διαστάσεων αν φύγει η σκηνή.
   useEffect(() => {
     const st = state.current;
     return () => {
-      window.clearTimeout(st.leaveTimer);
-      window.clearTimeout(st.enterTimer);
+      window.clearTimeout(st.ghostTimer);
     };
   }, []);
 
@@ -946,32 +1054,44 @@ function SceneController({ part, scale, dimsMode, dimStyle, clipBox, apiRef, sli
     });
     if (svg !== s.lastSvg && overlayRef.current) {
       const g = overlayRef.current;
-      // αλλαγή κομματιού ή λειτουργίας διαστάσεων → κινούμενη είσοδος· η περιστροφή δεν την ξαναπαίζει
-      const changed = s.lastPart !== part || s.lastDims !== dimsMode;
+      // Αλλαγή λειτουργίας (ή πρώτη εμφάνιση): οι νέες διαστάσεις ξεθωριάζουν μέσα και όσες φεύγουν ξεθωριάζουν έξω.
+      // Αλλαγή σχήματος: χωρίς κίνηση εδώ (τις κρύβει η μετάβαση του σχήματος). Περιστροφή: χωρίς κίνηση.
+      const now = performance.now();
+      const animate = (s.lastDims !== dimsMode || s.lastPart === null) && !reducedMotion();
       s.lastPart = part;
       s.lastDims = dimsMode;
-      window.clearTimeout(s.leaveTimer);
-      window.clearTimeout(s.enterTimer);
-      if (svg === '') {
-        // σβήσιμο: οι διαστάσεις μένουν ένα λεπτό ενώ χάνονται, μετά φεύγουν
-        if (g.innerHTML && !reducedMotion()) {
-          g.classList.add('dims-leave');
-          s.leaveTimer = window.setTimeout(() => {
-            g.innerHTML = '';
-            g.classList.remove('dims-leave');
-          }, DIMS_LEAVE_MS);
-        } else {
-          g.innerHTML = '';
-          g.classList.remove('dims-leave');
+      // οι διαστάσεις που υπήρχαν (χωρίς τα «φαντάσματα» που ξεθωριάζουν ήδη)
+      const before = new Map<string, Element>();
+      if (animate) g.querySelectorAll(':scope > g.dim:not(.dim-out)').forEach((el) => before.set(el.getAttribute('data-dim') ?? '', el.cloneNode(true) as Element));
+      // νέο περιεχόμενο· τα φαντάσματα μένουν ως έχουν (αλλιώς θα ξανάρχιζε η κίνησή τους ή θα χάνονταν νωρίς)
+      Array.from(g.children).forEach((el) => {
+        if (!el.classList.contains('dim-out')) el.remove();
+      });
+      g.insertAdjacentHTML('afterbegin', svg);
+      const fresh = Array.from(g.querySelectorAll(':scope > g.dim'));
+      if (animate) {
+        const ids = new Set<string>();
+        const present = new Set(fresh.map((el) => el.getAttribute('data-dim') ?? ''));
+        for (const id of present) if (!before.has(id)) ids.add(id);
+        s.fadeIn = { at: now, ids };
+        let ghosts = false;
+        before.forEach((el, id) => {
+          if (present.has(id)) return;
+          el.classList.add('dim-out');
+          g.appendChild(el);
+          ghosts = true;
+        });
+        if (ghosts) {
+          window.clearTimeout(s.ghostTimer);
+          s.ghostTimer = window.setTimeout(() => g.querySelectorAll(':scope > g.dim-out').forEach((el) => el.remove()), DIMS_OUT_MS + 40);
         }
-      } else {
-        g.classList.remove('dims-leave');
-        g.innerHTML = svg;
-        if (changed && !reducedMotion()) {
-          g.classList.add('dims-enter');
-          s.enterTimer = window.setTimeout(() => g.classList.remove('dims-enter'), DIMS_ENTER_MS);
-        } else {
-          g.classList.remove('dims-enter');
+      }
+      // η είσοδος συνεχίζεται από εκεί που ήταν, αν το περιεχόμενο ξαναχτιστεί όσο διαρκεί (π.χ. μια γρήγορη στροφή)
+      if (s.fadeIn && now - s.fadeIn.at < DIMS_IN_MS) {
+        for (const el of fresh) {
+          if (!s.fadeIn.ids.has(el.getAttribute('data-dim') ?? '')) continue;
+          el.classList.add('dim-in');
+          (el as SVGElement).style.animationDelay = `-${Math.round(now - s.fadeIn.at)}ms`;
         }
       }
       s.lastSvg = svg;

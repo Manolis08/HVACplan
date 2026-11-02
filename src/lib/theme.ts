@@ -18,13 +18,13 @@ export const isDarkTheme = (t: Theme) => t !== 'light';
 
 const KEY = 'opseis3d:theme';
 
-/** Σκούρο μπλε εξ ορισμού· θυμόμαστε την επιλογή του χρήστη στη συσκευή. */
+/** Γκρι εξ ορισμού για όσους ανοίγουν πρώτη φορά· θυμόμαστε την επιλογή του χρήστη στη συσκευή. */
 export function initialTheme(): Theme {
   try {
     const v = localStorage.getItem(KEY);
-    return THEMES.some((x) => x.id === v) ? (v as Theme) : 'dark';
+    return THEMES.some((x) => x.id === v) ? (v as Theme) : 'gray';
   } catch {
-    return 'dark';
+    return 'gray';
   }
 }
 

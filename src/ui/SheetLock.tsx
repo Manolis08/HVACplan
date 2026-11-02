@@ -6,9 +6,13 @@ import { Icon } from './Icon';
 // βρίσκεται δοκιμάζοντας όλους τους συνδυασμούς. Μετά από λάθος προσπάθειες ο έλεγχος περιμένει όλο και
 // περισσότερο. Το ξεκλείδωμα ζει μόνο στη μνήμη της σελίδας: με ανανέωση ζητείται ξανά.
 // Προσοχή: σε στατική σελίδα αυτό είναι εμπόδιο για τον απλό χρήστη, όχι πραγματική ασφάλεια.
-const CODE_SALT = '8539d46b8c97c51294f3749b15e135f2';
+// Τα αποτυπώματα είναι ανακατεμένα (όχι σε καθαρό κείμενο). Αυτό δεν είναι ασφάλεια: είναι απλώς
+// ότι δεν διαβάζονται με μια ματιά στον κώδικα.
+const MASK = [0x5a, 0x3c, 0xe1, 0x07, 0x9d, 0x62, 0xb8, 0x4f];
+const unmix = (a: number[]) => a.map((v, i) => v ^ MASK[i % MASK.length]).map((v) => v.toString(16).padStart(2, "0")).join("");
+const CODE_SALT_MIXED = [223,5,53,108,17,245,125,93,206,207,149,156,136,131,141,189];
+const CODE_HASH_MIXED = [27,20,65,39,55,242,161,72,33,190,183,128,216,205,128,191,213,106,73,93,229,35,126,150,152,14,103,209,147,161,174,76];
 const CODE_ITERATIONS = 310000;
-const CODE_HASH = '4128a020aa9019077b82568745af38f08f56a85a7841c6d9c23286d60ec31603';
 /** Μέχρι πόσες λάθος προσπάθειες χωρίς αναμονή· μετά, αναμονή που διπλασιάζεται (έως 5 λεπτά). */
 const FREE_TRIES = 3;
 const MAX_WAIT_MS = 5 * 60_000;
@@ -20,7 +24,7 @@ const fromHex = (h: string) => new Uint8Array(h.match(/../g)!.map((x) => parseIn
 async function deriveHash(code: string): Promise<string> {
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(code), 'PBKDF2', false, ['deriveBits']);
   const bits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', hash: 'SHA-256', salt: fromHex(CODE_SALT), iterations: CODE_ITERATIONS },
+    { name: 'PBKDF2', hash: 'SHA-256', salt: fromHex(unmix(CODE_SALT_MIXED)), iterations: CODE_ITERATIONS },
     key,
     256,
   );
@@ -83,7 +87,7 @@ export function SheetLock({ onUnlock, onCancel }: Props) {
     if (Date.now() < loadTries().until) return;
     const entered = code.trim().slice(0, 64);
     setChecking(true);
-    const ok = sameHash(await deriveHash(entered), CODE_HASH);
+    const ok = sameHash(await deriveHash(entered), unmix(CODE_HASH_MIXED));
     setChecking(false);
     if (ok) {
       saveTries(null);
