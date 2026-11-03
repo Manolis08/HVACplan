@@ -107,6 +107,18 @@ body {
   background: var(--bg);
   -webkit-text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
+  /* σαν εφαρμογή: χωρίς επιλογή κειμένου και χωρίς το μενού Αντιγραφή / Αναζήτηση / Μετάφραση όταν κρατάς πατημένο */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* τα πεδία κειμένου μένουν επιλέξιμα (μέτρα, ονόματα, κωδικός) */
+input,
+textarea,
+[contenteditable='true'] {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 button,
