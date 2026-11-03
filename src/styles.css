@@ -2557,8 +2557,8 @@ body {
 .tp-pin-shadow {
   transform: var(--ms);
   color: #000;
-  opacity: 0.5;
-  filter: blur(1.2px);
+  opacity: 0.4;
+  /* χωρίς filter: blur — στο Safari του iPhone το θόλωμα πάνω σε μετασχηματισμένο στοιχείο άφηνε χρωματιστές γραμμές */
 }
 
 .tp-pin-shadow .icon {
