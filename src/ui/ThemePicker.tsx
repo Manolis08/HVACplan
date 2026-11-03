@@ -7,7 +7,7 @@ interface Props {
   onChange: (t: Theme) => void;
 }
 
-/** Κουμπί «Φόντο» με μενού τεσσάρων χρωμάτων. */
+/** Κυκλάκι με το χρώμα του φόντου· ανοίγει μενού τεσσάρων χρωμάτων. */
 export function ThemePicker({ value, onChange }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -27,14 +27,14 @@ export function ThemePicker({ value, onChange }: Props) {
     <div className="theme-picker" ref={ref}>
       <button
         type="button"
-        className={`theme-toggle with-chevron${open ? ' open' : ''}`}
+        className={`theme-toggle swatch-only${open ? ' open' : ''}`}
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-label={`Χρώμα φόντου: ${themeInfo(value).label}`}
+        title="Χρώμα φόντου"
         onClick={() => setOpen((o) => !o)}
       >
         <span className="swatch" style={{ background: themeInfo(value).swatch }} aria-hidden="true" />
-        Φόντο
-        <Icon name="chevron" size={12} className="chevron" />
       </button>
       {open && (
         <div className="theme-menu" role="menu" aria-label="Χρώμα φόντου">

@@ -1,4 +1,4 @@
-import { CameraControls, GizmoHelper, GizmoViewport } from '@react-three/drei';
+import { CameraControls } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import CameraControlsImpl from 'camera-controls';
 import { useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type Ref, type RefObject } from 'react';
@@ -42,6 +42,11 @@ interface SceneApi extends ViewerApi {
   snap: () => void;
 }
 
+/** Η ετικέτα διάστασης με το δοσμένο id (αν υπάρχει) μεγαλώνει και αναβοσβήνει (CSS: dim-focus). */
+function markFocus(g: SVGGElement | null, id: string | null) {
+  g?.querySelectorAll(':scope > g.dim').forEach((el) => el.classList.toggle('dim-focus', !!id && el.getAttribute('data-dim') === id));
+}
+
 interface ViewerProps {
   part: Part;
   scale: Scale;
@@ -54,6 +59,8 @@ interface ViewerProps {
   showHidden: boolean;
   /** Χρωματισμός εδρών ανάλογα με την όψη στην οποία κοιτούν. */
   colorMode: boolean;
+  /** Διάσταση που αλλάζει ο χρήστης τώρα: η ετικέτα της μεγαλώνει και αναβοσβήνει. */
+  focusDim?: string | null;
   theme: Theme;
   /**
    * Ταυτότητα του σχήματος και θέση του στη σειρά των έτοιμων σχημάτων (−1 για αρχείο).
@@ -586,6 +593,12 @@ function alignedDashDistances(pos: ArrayLike<number>): Float32Array {
   return out;
 }
 
+/**
+ * Χρώμα των κρυμμένων γραμμών: το ίδιο με των διαστάσεων (--dim) για το τρέχον φόντο: γκρι στο φωτεινό, μπλε στο
+ * σκούρο μπλε, άσπρο στο γκρι και στο μαύρο.
+ */
+const dimColor = () => getComputedStyle(document.documentElement).getPropertyValue('--dim').trim() || '#ffffff';
+
 /** Πάνω από τόσα τρίγωνα δεν υπολογίζουμε περιγράμματα καμπύλων σε κάθε κίνηση (κόστος). */
 const MAX_SILHOUETTE_TRIANGLES = 200_000;
 
@@ -602,7 +615,7 @@ function HiddenSilhouettes({ triangles, show }: { triangles: Float32Array; show:
   const line = useMemo(() => {
     const g = new LineSegmentsGeometry();
     g.setPositions([0, 0, 0, 0, 0, 0]);
-    const m = new LineMaterial({ color: 0x4488ff, linewidth: 1.6, dashed: true, transparent: true, opacity: 0, depthWrite: false });
+    const m = new LineMaterial({ color: 0xffffff, linewidth: 1.6, dashed: true, transparent: true, opacity: 0, depthWrite: false });
     m.depthFunc = GreaterDepth;
     const l = new LineSegments2(g, m);
     l.renderOrder = 1;
@@ -617,10 +630,17 @@ function HiddenSilhouettes({ triangles, show }: { triangles: Float32Array; show:
     [line],
   );
   const state = useRef({ dir: new Vector3(), target: new Vector3(), topo: null as unknown, wait: 0 });
+  const themeSeen = useRef('');
   useEffect(() => invalidate(), [show, invalidate]);
   useFrame((_, delta) => {
     const st = state.current;
     const m = line.material;
+    const theme = document.documentElement.dataset.theme ?? '';
+    if (themeSeen.current !== theme) {
+      themeSeen.current = theme;
+      m.color.set(dimColor());
+      invalidate();
+    }
     const px = 1 / camera.zoom;
     m.dashSize = 4 * px;
     m.gapSize = 4 * px;
@@ -675,9 +695,9 @@ function HiddenEdges({ edges, show, onHidden }: { edges: Float32Array; show: boo
     // Αντίγραφο: το setPositions κρατά τον ίδιο πίνακα, και η κίνηση τον αλλάζει. Χωρίς αντίγραφο
     // θα «μαζεύονταν» οι ακμές του ίδιου του σχήματος (και του φύλλου όψεων).
     g.setPositions(edges.slice());
-    // Γαλάζιο με πλήρη αδιαφάνεια: ξεχωρίζει και πάνω στο γκρι μοντέλο και στο σκοτεινό φόντο.
+    // Λευκό με πλήρη αδιαφάνεια: οι κρυμμένες ακμές φαίνονται πάνω στο γκρι μοντέλο.
     const m = new LineMaterial({
-      color: 0x4488ff,
+      color: 0xffffff,
       linewidth: 1.6,
       dashed: true,
       transparent: true,
@@ -733,8 +753,15 @@ function HiddenEdges({ edges, show, onHidden }: { edges: Float32Array; show: boo
   );
   // Παύλες 4 px / κενό 4 px ανεξάρτητα από το zoom (ορθογραφική: 1 px = 1/zoom mm).
   useEffect(() => invalidate(), [show, invalidate]);
+  const themeSeen = useRef('');
   useFrame((_, delta) => {
     const px = 1 / camera.zoom;
+    const theme = document.documentElement.dataset.theme ?? '';
+    if (themeSeen.current !== theme) {
+      themeSeen.current = theme;
+      line.material.color.set(dimColor());
+      invalidate();
+    }
     line.material.dashSize = 4 * px;
     line.material.gapSize = 4 * px;
 
@@ -806,16 +833,19 @@ interface ControllerProps {
   part: Part;
   scale: Scale;
   dimsMode: DimsMode;
+  /** διακεκομμένες γραμμές ενεργές: δεν χρειάζονται οι γραμμές στις κρυμμένες κορυφές των διαστάσεων */
+  showHidden: boolean;
   dimStyle?: DimStyle;
   clipBox?: BBox;
   apiRef: RefObject<SceneApi | null>;
   slidingRef: RefObject<boolean>;
   overlayRef: RefObject<SVGGElement | null>;
+  focusRef: RefObject<string | null>;
   onViewChange: (view: ViewId | null) => void;
   onFrameRef: RefObject<ViewerProps['onFrame']>;
 }
 
-function SceneController({ part, scale, dimsMode, dimStyle, clipBox, apiRef, slidingRef, overlayRef, onViewChange, onFrameRef }: ControllerProps) {
+function SceneController({ part, scale, dimsMode, showHidden, dimStyle, clipBox, apiRef, slidingRef, overlayRef, focusRef, onViewChange, onFrameRef }: ControllerProps) {
   const camera = useThree((s) => s.camera) as OrthographicCamera;
   const gl = useThree((s) => s.gl);
   // Ο έλεγχος κάμερας (makeDefault) μπαίνει στο store μετά την πρώτη απόδοση.
@@ -986,7 +1016,7 @@ function SceneController({ part, scale, dimsMode, dimStyle, clipBox, apiRef, sli
   useEffect(() => {
     state.current.lastSvg = '\u0000'; // αναγκαστικός επανυπολογισμός διαστάσεων
     invalidate();
-  }, [scale, dimsMode, dimStyle, part, invalidate]);
+  }, [scale, dimsMode, showHidden, dimStyle, part, invalidate]);
 
   // Σχεδίαση μόνο όταν χρειάζεται: όταν η σελίδα ξαναγίνεται ορατή (επιστροφή από άλλη
   // εφαρμογή/καρτέλα), ζητάμε νέο καρέ, γιατί ο browser μπορεί να έχει καθαρίσει τον καμβά.
@@ -1051,6 +1081,9 @@ function SceneController({ part, scale, dimsMode, dimStyle, clipBox, apiRef, sli
       mode: dimsMode,
       memory: s.labelMemory,
       edges: part.edges,
+      triangles: part.triangles,
+      hiddenLinesShown: showHidden,
+      cornerGhosts: shown === null, // μόνο στην ελεύθερη περιστροφή
     });
     if (svg !== s.lastSvg && overlayRef.current) {
       const g = overlayRef.current;
@@ -1068,6 +1101,7 @@ function SceneController({ part, scale, dimsMode, dimStyle, clipBox, apiRef, sli
         if (!el.classList.contains('dim-out')) el.remove();
       });
       g.insertAdjacentHTML('afterbegin', svg);
+      markFocus(g, focusRef.current);
       const fresh = Array.from(g.querySelectorAll(':scope > g.dim'));
       if (animate) {
         const ids = new Set<string>();
@@ -1107,7 +1141,7 @@ function SceneController({ part, scale, dimsMode, dimStyle, clipBox, apiRef, sli
   );
 }
 
-export function Viewer({ part, scale, dimsMode, dimStyle, clipBox, showHidden, colorMode, theme, shape, onViewChange, onFrame, overlay, floating, metal = false, noSlide = false, hidePart = false, ghost, scene, ref }: ViewerProps) {
+export function Viewer({ part, scale, dimsMode, dimStyle, clipBox, showHidden, colorMode, focusDim, theme, shape, onViewChange, onFrame, overlay, floating, metal = false, noSlide = false, hidePart = false, ghost, scene, ref }: ViewerProps) {
   const onFrameRef = useRef(onFrame);
   onFrameRef.current = onFrame;
   const apiRef = useRef<SceneApi | null>(null);
@@ -1115,6 +1149,9 @@ export function Viewer({ part, scale, dimsMode, dimStyle, clipBox, showHidden, c
   // Όσο γλιστράνε τα σχήματα, οι διαστάσεις κρύβονται (θα έδειχναν στη λάθος θέση).
   const [sliding, setSliding] = useState(false);
   const overlayRef = useRef<SVGGElement | null>(null);
+  const focusRef = useRef<string | null>(null);
+  focusRef.current = focusDim ?? null;
+  useEffect(() => markFocus(overlayRef.current, focusDim ?? null), [focusDim]);
 
   useImperativeHandle(ref, () => ({
     goTo: (view) => apiRef.current?.goTo(view),
@@ -1152,22 +1189,16 @@ export function Viewer({ part, scale, dimsMode, dimStyle, clipBox, showHidden, c
           part={part}
           scale={scale}
           dimsMode={dimsMode}
+          showHidden={showHidden}
           dimStyle={dimStyle}
           clipBox={clipBox}
           apiRef={apiRef}
           slidingRef={slidingRef}
           overlayRef={overlayRef}
+          focusRef={focusRef}
           onViewChange={onViewChange}
           onFrameRef={onFrameRef}
         />
-        <GizmoHelper alignment="top-left" margin={[40, 84]}>
-          <GizmoViewport
-            disabled
-            scale={30}
-            axisColors={['#d1453b', '#2f9e44', '#2b6cd4']}
-            labelColor="#ffffff"
-          />
-        </GizmoHelper>
       </Canvas>
       <svg className={`dims-overlay${sliding || hidePart ? ' sliding' : ''}`} aria-hidden="true">
         <g ref={overlayRef} />

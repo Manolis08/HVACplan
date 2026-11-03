@@ -59,6 +59,44 @@ export interface DimLayoutInput {
    * ίδια ευθεία, π.χ. από την πλευρά του στρογγυλού μέρους αντί για το κενό δίπλα του.
    */
   edges?: Float32Array;
+  /**
+   * Τρίγωνα του σχήματος (x,y,z ×3). Αν δοθούν (μαζί με τις ακμές), μια γραμμή επέκτασης που ξεκινά από κορυφή
+   * κρυμμένη πίσω από επιφάνεια δεν μένει «στον αέρα» πάνω στην επιφάνεια: στην κορυφή φαίνονται οι ακμές που
+   * συναντιούνται εκεί, ως γραμμές που ξεθωριάζουν, ώστε να φαίνεται πού είναι η γραμμή και με ποια γωνία.
+   */
+  triangles?: Float32Array;
+  /** Η κάμερα είναι σε ελεύθερη περιστροφή (όχι σε μία από τις όψεις): μόνο τότε φαίνονται οι κρυμμένες γωνίες. */
+  cornerGhosts?: boolean;
+  /** Οι διακεκομμένες γραμμές του σχήματος είναι ενεργές: δείχνουν ήδη πού είναι οι κρυμμένες ακμές, οπότε δεν προστίθενται γραμμές στις κρυμμένες κορυφές. */
+  hiddenLinesShown?: boolean;
+}
+
+/** Πάνω από τόσα τρίγωνα δεν ελέγχουμε ποιες κορυφές κρύβονται (κόστος σε κάθε καρέ). */
+const MAX_OCCLUSION_TRIANGLES = 20_000;
+/** μήκος (px) των γραμμών που δείχνουν τις ακμές στην κρυμμένη κορυφή */
+const GHOST_LENGTH = 56;
+
+/** Κρύβεται το σημείο p πίσω από επιφάνεια του σχήματος, όπως φαίνεται από την κάμερα; */
+function hiddenFromView(p: Vec3, viewDir: Vec3, tris: Float32Array, eps: number): boolean {
+  const [dx, dy, dz] = viewDir;
+  for (let i = 0; i < tris.length; i += 9) {
+    const ax = tris[i], ay = tris[i + 1], az = tris[i + 2];
+    const e1x = tris[i + 3] - ax, e1y = tris[i + 4] - ay, e1z = tris[i + 5] - az;
+    const e2x = tris[i + 6] - ax, e2y = tris[i + 7] - ay, e2z = tris[i + 8] - az;
+    // Möller–Trumbore: ακτίνα από το p προς την κάμερα
+    const px = dy * e2z - dz * e2y, py = dz * e2x - dx * e2z, pz = dx * e2y - dy * e2x;
+    const det = e1x * px + e1y * py + e1z * pz;
+    if (Math.abs(det) < 1e-12) continue;
+    const inv = 1 / det;
+    const tx = p[0] - ax, ty = p[1] - ay, tz = p[2] - az;
+    const u = (tx * px + ty * py + tz * pz) * inv;
+    if (u < -1e-9 || u > 1 + 1e-9) continue;
+    const qx = ty * e1z - tz * e1y, qy = tz * e1x - tx * e1z, qz = tx * e1y - ty * e1x;
+    const v = (dx * qx + dy * qy + dz * qz) * inv;
+    if (v < -1e-9 || u + v > 1 + 1e-9) continue;
+    if ((e2x * qx + e2y * qy + e2z * qz) * inv > eps) return true;
+  }
+  return false;
 }
 
 /** Βρίσκεται το σημείο p πάνω σε κάποια ακμή του σχήματος; */
@@ -307,6 +345,9 @@ interface Placed {
   /** Αρχές των γραμμών επέκτασης στην οθόνη (πάνω στο σχήμα). */
   EA: P2;
   EB: P2;
+  /** οι ίδιες αρχές στο χώρο του μοντέλου */
+  EA3: Vec3;
+  EB3: Vec3;
 }
 
 /** SVG (εσωτερικό ενός <g>) με τις διαστάσεις για την τρέχουσα όψη. */
@@ -355,13 +396,16 @@ export function layoutDims(input: DimLayoutInput): string {
       // Η 3D κατεύθυνση διαλέγει μόνο την πλευρά· η μετατόπιση γίνεται κάθετα στη γραμμή στην οθόνη.
       // Αρχή γραμμής επέκτασης πάνω στο σχήμα, μόνο αν μένει στην ίδια ευθεία στην οθόνη (κύριες και
       // σχεδόν κύριες όψεις)· αλλιώς οι γραμμές επέκτασης δεν θα ήταν παράλληλες.
-      const snap = (p: Vec3, P: P2): P2 => {
-        if (!input.edges) return P;
+      const snap = (p: Vec3, P: P2): [P2, Vec3] => {
+        if (!input.edges) return [P, p];
         const span = Math.hypot(dim.b[0] - dim.a[0], dim.b[1] - dim.a[1], dim.b[2] - dim.a[2]);
-        const q = project(extensionStart(p, axis, o, input.edges, Math.max(1e-6, span * 1e-4)));
-        return Math.abs(dot2(sub(q, P), u)) <= Math.max(3, len * 0.03) ? q : P;
+        const q3 = extensionStart(p, axis, o, input.edges, Math.max(1e-6, span * 1e-4));
+        const q = project(q3);
+        return Math.abs(dot2(sub(q, P), u)) <= Math.max(3, len * 0.03) ? [q, q3] : [P, p];
       };
-      placed.push({ dim, A, B, len, n, group: `${o.join(',')}|${axis}`, EA: snap(dim.a, A), EB: snap(dim.b, B) });
+      const [EA, EA3] = snap(dim.a, A);
+      const [EB, EB3] = snap(dim.b, B);
+      placed.push({ dim, A, B, len, n, group: `${o.join(',')}|${axis}`, EA, EB, EA3, EB3 });
       break;
     }
   }
@@ -379,6 +423,43 @@ export function layoutDims(input: DimLayoutInput): string {
   // Σε όψεις κατά άξονα όλες οι διαστάσεις μπαίνουν έξω από το περίγραμμα (όπως στο σχέδιο).
   // Σε ισομετρική/ελεύθερη, οι διαστάσεις χαρακτηριστικών μένουν κοντά στο χαρακτηριστικό.
   const axisView = Math.max(...viewDir.map(Math.abs)) > 0.999;
+
+  // Κρυμμένες κορυφές: γραμμές που ξεθωριάζουν κατά μήκος των ακμών που συναντιούνται εκεί (μόνο στην οθόνη)
+  const occluders = !s.paper && input.cornerGhosts && !input.hiddenLinesShown && input.edges && input.triangles && input.triangles.length / 9 <= MAX_OCCLUSION_TRIANGLES ? input.triangles : null;
+  const occEps = Math.max(1e-6, Math.hypot(...[0, 1, 2].map((i) => Math.max(...corners.map((c) => c[i])) - Math.min(...corners.map((c) => c[i])))) * 1e-4);
+  let ghostId = 0;
+  const cornerGhost = (v3: Vec3, V: P2): string => {
+    if (!occluders || !input.edges || !hiddenFromView(v3, viewDir, occluders, occEps)) return '';
+    const edges = input.edges;
+    const dist3 = (a: Vec3, b: Vec3) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+    const ends: Vec3[] = [];
+    for (let i = 0; i < edges.length && ends.length < 24; i += 6) {
+      const a: Vec3 = [edges[i], edges[i + 1], edges[i + 2]];
+      const b: Vec3 = [edges[i + 3], edges[i + 4], edges[i + 5]];
+      if (dist3(a, v3) <= occEps) ends.push(b);
+      else if (dist3(b, v3) <= occEps) ends.push(a);
+      else if (onEdges(v3, new Float32Array([...a, ...b]), occEps)) ends.push(a, b); // η κορυφή είναι στη μέση ακμής
+    }
+    const seen = new Set<string>();
+    let defs = '';
+    let out = '';
+    for (const q3 of ends) {
+      const v = sub(project(q3), V);
+      const L = len2(v);
+      if (L < 3) continue;
+      const t = mul(v, 1 / L);
+      const key = `${Math.round(t[0] * 20)},${Math.round(t[1] * 20)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const E = add(V, mul(t, Math.min(L, GHOST_LENGTH)));
+      const id = `dg${ghostId++}`;
+      defs +=
+        `<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${r(V[0])}" y1="${r(V[1])}" x2="${r(E[0])}" y2="${r(E[1])}">` +
+        `<stop offset="0" style="stop-color:var(--dim)"/><stop offset="1" style="stop-color:var(--dim);stop-opacity:0"/></linearGradient>`;
+      out += `<path class="dim-ghost" d="M${pt(V)}L${pt(E)}" style="stroke:url(#${id})"/>`;
+    }
+    return out ? `<defs>${defs}</defs>${out}` : '';
+  };
 
   for (const p of placed) {
     const { A, B, n, len, EA, EB } = p;
@@ -408,7 +489,7 @@ export function layoutDims(input: DimLayoutInput): string {
     }
     const mid = mul(add(A2, B2), 0.5);
     parts.push(
-      `<g class="dim" data-dim="${p.dim.id}"><path ${at.ext} d="${ext}"/><path ${at.line} d="${line}"/>` +
+      `<g class="dim" data-dim="${p.dim.id}"><path ${at.ext} d="${ext}"/>${cornerGhost(p.EA3, EA)}${cornerGhost(p.EB3, EB)}<path ${at.line} d="${line}"/>` +
         `<path ${at.arrow} d="${arrows}"/>${label(mid, u, n, add(mid, mul(n, s.labelOff)), formatScaled(p.dim.value, scale))}</g>`,
     );
   }

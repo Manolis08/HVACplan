@@ -179,7 +179,7 @@ const steppedBlock: TemplateDef = {
     { key: 'P', label: 'Πίσω μήκος (φτερό + κολόνα)', axis: 'X', defaultValue: 20 },
     { key: 'Wc', label: 'Πλάτος κολόνας', axis: 'X', defaultValue: 3 },
     { key: 'Ls', label: 'Μήκος σκαλοπατιού', axis: 'X', defaultValue: 15 },
-    { key: 'D', label: 'Βάθος', axis: 'Y', defaultValue: 15 },
+    { key: 'D', label: 'Βάθος', axis: 'Y', dim: 'W', defaultValue: 15 },
     { key: 'Dw', label: 'Βάθος φτερού', axis: 'Y', defaultValue: 3 },
     { key: 'Hs', label: 'Ύψος σκαλοπατιού', axis: 'Z', defaultValue: 5 },
     { key: 'Hu', label: 'Κολόνα πάνω από το σκαλοπάτι', axis: 'Z', defaultValue: 10 },

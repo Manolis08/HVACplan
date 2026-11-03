@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { THEMES } from '../lib/theme';
 import { FLOORS } from './floors';
+import { pickPreset, presetMismatch } from './presets';
+import { wantIntro } from './wantIntro';
 import { INTRO } from './timeline';
 
 // Intro κατά το άνοιγμα της εφαρμογής: πτήση πάνω από την εφαρμογή σε 3D, και μετά μπαίνει μέσα της.
@@ -11,22 +13,10 @@ import { INTRO } from './timeline';
 const LOAD_TIMEOUT_MS = 2500;
 /** σβήσιμο όταν δεν φορτώνει */
 const SKIP_FADE = 0.25;
-/** σβήσιμο στο τέλος: το τελευταίο καρέ είναι ίδιο με την εφαρμογή, οπότε η μετάβαση δεν φαίνεται σαν «κόψιμο» */
-const BLEND_FADE = 0.6;
 /** κάθε κλικ/πλήκτρο επιταχύνει το φιλμ· η επιτάχυνση ξεθωριάζει με χρόνο ημιζωής HALF_LIFE */
 const CLICK_BOOST = 1.6;
 const MAX_RATE = 8;
 const HALF_LIFE = 0.7;
-
-function wantIntro() {
-  try {
-    if (new URLSearchParams(window.location.search).get('intro') === '0') return false;
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
-  } catch {
-    return false;
-  }
-  return true;
-}
 
 type Phase = 'loading' | 'playing' | 'leaving' | 'gone';
 
@@ -63,11 +53,12 @@ export function Intro() {
 
     (async () => {
       const { createFilm, loadImages } = await import('./film');
-      // η διάταξη του κινητού (ίδιο όριο με το styles.css) σε όρθια οθόνη· σε πλάγια, της επιφάνειας εργασίας
-      const mobile = window.innerWidth < 900 && window.innerHeight > window.innerWidth;
+      // η φωτογραφία της εφαρμογής που ταιριάζει καλύτερα στο μέγεθος του παραθύρου (βλ. presets.ts)
+      const preset = pickPreset(window.innerWidth, window.innerHeight);
+      const mobile = !!preset.mobile;
       // το φιλμ είναι φωτογραφημένο σε κάθε φόντο, ώστε η είσοδος στην εφαρμογή να ταιριάζει
       const theme = (THEMES.find((x) => x.id === document.documentElement.dataset.theme) ?? THEMES[0]).id;
-      const base = `${import.meta.env.BASE_URL}intro/${mobile ? 'mobile' : 'desktop'}/${theme}/`;
+      const base = `${import.meta.env.BASE_URL}intro/${preset.name}/${theme}/`;
       const layout = await (await fetch(base + 'layout.json')).json();
       const images = await loadImages(base, layout);
       if (cancelled || left || !canvasRef.current) return;
@@ -92,14 +83,22 @@ export function Intro() {
         t += dt * Math.min(MAX_RATE, 1 + boost);
         film?.seek(Math.min(t, INTRO.end));
         if (t >= INTRO.end) {
-          // τελείωσε η βουτιά: σβήνει αμέσως, χωρίς παύση, και αποκαλύπτει την εφαρμογή που ήδη είναι ζωγραφισμένη από κάτω
-          setFade(BLEND_FADE);
-          setPhase('leaving');
+          // τελείωσε η βουτιά: αν το παράθυρο έχει το μέγεθος της φωτογραφίας, το τελευταίο καρέ είναι ίδιο με την
+          // εφαρμογή και φεύγει αμέσως. Αλλιώς, η διάταξη της εφαρμογής διαφέρει λίγα pixel (η φωτογραφία τεντώνεται στο
+          // μέγεθος του παραθύρου), και σβήνει πολύ γρήγορα (0,12–0,25 s, ανάλογα με τη διαφορά) ώστε να μη φανεί «κόψιμο»
+          const mismatch = presetMismatch(preset, window.innerWidth, window.innerHeight);
+          const blend = mismatch < 0.003 ? 0 : Math.min(0.25, 0.12 + mismatch * 3);
+          if (blend > 0) {
+            setFade(blend);
+            setPhase('leaving');
+          } else {
+            setPhase('gone');
+          }
           window.setTimeout(() => {
             film?.dispose();
             film = null;
             setPhase('gone');
-          }, BLEND_FADE * 1000 + 50);
+          }, blend * 1000 + 200);
           return;
         }
         raf = requestAnimationFrame(tick);

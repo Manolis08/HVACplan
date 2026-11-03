@@ -11,12 +11,14 @@ interface Props {
   onInput: (key: string, value: string) => void;
   onToggle: (key: string, value: boolean) => void;
   onReset: () => void;
+  /** Το πεδίο μέτρου που γράφει ο χρήστης (id της διάστασης στο 3D) ή null όταν φεύγει από το πεδίο. */
+  onFocusDim?: (id: string | null) => void;
   /** Τα πεδία μέτρων είναι κρυμμένα μέχρι να πατηθεί το κουμπί (πιάνουν πολύ χώρο). */
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-export function ParamForm({ template, inputs, toggles, evaluation, onInput, onToggle, onReset, open, onOpenChange }: Props) {
+export function ParamForm({ template, inputs, toggles, evaluation, onInput, onToggle, onReset, onFocusDim, open, onOpenChange }: Props) {
   const { fieldErrors, issues, locked, values, part } = evaluation;
   const issueFields = new Set(issues.flatMap((i) => i.fields));
 
@@ -35,8 +37,6 @@ export function ParamForm({ template, inputs, toggles, evaluation, onInput, onTo
 
       <div id={`params-${template.id}`} className={`collapsible${open ? ' open' : ''}`} inert={!open}>
         <div className="collapsible-inner">
-          <p className="form-note">Πραγματικά μέτρα σε mm. Η κλίμακα δεν τα αλλάζει.</p>
-
           {template.toggles?.map((tg) => (
             <label key={tg.key} className="toggle">
               <input type="checkbox" checked={!!toggles[tg.key]} onChange={(e) => onToggle(tg.key, e.target.checked)} />
@@ -68,6 +68,8 @@ export function ParamForm({ template, inputs, toggles, evaluation, onInput, onTo
                       aria-invalid={invalid}
                       aria-describedby={error ? `${id}-err` : undefined}
                       onChange={(e) => onInput(p.key, e.target.value)}
+                      onFocus={() => onFocusDim?.(p.dim ?? p.key)}
+                      onBlur={() => onFocusDim?.(null)}
                     />
                     {p.signed && !isLocked && (
                       <button

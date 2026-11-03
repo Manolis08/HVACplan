@@ -80,6 +80,8 @@ export interface ParamDef {
   defaultValue: number;
   /** Δέχεται και αρνητικές τιμές ή μηδέν (π.χ. θέση από το κέντρο). */
   signed?: boolean;
+  /** Το id της διάστασης στο 3D που δείχνει αυτό το μέτρο, αν διαφέρει από το key. */
+  dim?: string;
 }
 
 export interface ToggleDef {

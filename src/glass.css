@@ -1,0 +1,323 @@
+/*
+ * ΔΟΚΙΜΗ «Liquid Glass» (glassmorphism σε στυλ Apple). Φορτώνει μετά το styles.css και αλλάζει μόνο την
+ * εμφάνιση: ημιδιαφανή πάνελ με θόλωμα, λεπτό φωτεινό περίγραμμα και ανταύγεια στην πάνω ακμή, μονόχρωμο
+ * φόντο (το χρώμα του θέματος). Το περιεχόμενο (3D, φύλλο όψεων) μένει συμπαγές· γυαλί είναι τα χειριστήρια
+ * που επιπλέουν από πάνω. Για να βγει: αφαιρείται το import του από το main.tsx.
+ */
+
+:root {
+  --glass-blur: blur(22px) saturate(180%);
+  --glass-fill: rgba(255, 255, 255, 0.55);
+  --glass-fill-strong: rgba(255, 255, 255, 0.72);
+  --glass-fill-soft: rgba(255, 255, 255, 0.38);
+  --glass-edge: rgba(255, 255, 255, 0.75);
+  --glass-line: rgba(23, 33, 43, 0.08);
+  --glass-hi: inset 0 1px 0 rgba(255, 255, 255, 0.9), inset 0 -1px 0 rgba(255, 255, 255, 0.25);
+  --glass-shadow: 0 8px 32px rgba(31, 50, 80, 0.12), 0 1px 3px rgba(31, 50, 80, 0.08);
+  --glass-radius: 18px;
+  /* φόντο μονόχρωμο, ίδιο με του θέματος (χωρίς χρωματιστές λάμψεις) */
+  --glass-ambient: #eef1f4;
+
+  /* τα υπάρχοντα «συμπαγή» χρώματα γίνονται διάφανα, ώστε κάθε στοιχείο να παίρνει το γυαλί */
+  --bg: transparent;
+  --panel: var(--glass-fill);
+  --input-bg: var(--glass-fill-soft);
+  --surface-2: rgba(255, 255, 255, 0.3);
+  --header-bg: var(--glass-fill);
+  --chip-bg: var(--glass-fill-strong);
+  --border: var(--glass-line);
+  --header-border: var(--glass-line);
+  --radius: 14px;
+}
+
+:root[data-theme='dark'],
+:root[data-theme='gray'],
+:root[data-theme='black'] {
+  --glass-fill: rgba(30, 40, 52, 0.45);
+  --glass-fill-strong: rgba(28, 38, 50, 0.62);
+  --glass-fill-soft: rgba(255, 255, 255, 0.06);
+  --glass-edge: rgba(255, 255, 255, 0.16);
+  --glass-line: rgba(255, 255, 255, 0.1);
+  --glass-hi: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 -1px 0 rgba(255, 255, 255, 0.03);
+  --glass-shadow: 0 10px 40px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --glass-ambient: #0f151b;
+  --surface-2: rgba(255, 255, 255, 0.05);
+}
+
+:root[data-theme='gray'] {
+  --glass-ambient: #2b2d31;
+  /* ουδέτερα γκρι, χωρίς μπλε απόχρωση */
+  --glass-fill: rgba(62, 64, 69, 0.5);
+  --glass-fill-strong: rgba(54, 56, 60, 0.68);
+}
+
+:root[data-theme='black'] {
+  --glass-ambient: #000000;
+  /* ουδέτερα μαύρα, χωρίς μπλε απόχρωση */
+  --glass-fill: rgba(20, 20, 20, 0.6);
+  --glass-fill-strong: rgba(14, 14, 14, 0.78);
+}
+
+body {
+  background: var(--glass-ambient);
+  background-attachment: fixed;
+}
+
+/* ---------- Κοινή «συνταγή» γυαλιού ---------- */
+.app-header,
+.card,
+.view-toolbar,
+.pane-switch,
+.chip,
+.menu,
+.theme-menu,
+.scale-popover,
+.view-popover,
+.lock-dialog,
+.install-banner,
+.sheet-toolbar,
+.sheet-warnings,
+.title-block-form,
+.tp-play {
+  background: var(--glass-fill);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-hi), var(--glass-shadow);
+}
+
+/* ---------- Διάταξη: τα πάνελ «επιπλέουν» πάνω στο φόντο ---------- */
+/* το θόλωμα κάνει την κεφαλίδα δικό της «στρώμα»· πάνω από τα υπόλοιπα, ώστε τα μενού της να φαίνονται */
+.app-header {
+  position: relative;
+  z-index: 30;
+  margin: 10px 10px 0;
+  margin-top: calc(10px + env(safe-area-inset-top));
+  padding-top: 0;
+  border-radius: var(--glass-radius);
+  min-height: 52px;
+}
+
+.app-main {
+  gap: 10px;
+  padding: 10px;
+}
+
+.side-pane {
+  border: 0;
+  padding: 0 2px calc(16px + env(safe-area-inset-bottom));
+}
+
+.card {
+  border-radius: var(--glass-radius);
+  padding: 14px;
+}
+
+.viewer-pane {
+  position: relative;
+  border-radius: 22px;
+  overflow: hidden;
+  background: var(--glass-fill-soft);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-hi), var(--glass-shadow);
+}
+
+.pane-header {
+  margin: 10px;
+}
+
+/* ---------- Καρτέλες 3D / Φύλλο / Τ+Π ---------- */
+.pane-switch {
+  border-radius: 12px;
+  padding: 3px;
+  overflow: hidden;
+}
+
+.pane-switch::before {
+  inset: 3px auto 3px 3px;
+  width: calc((100% - 6px) / 3);
+  border-radius: 9px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 85%, #fff), var(--accent));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 4px 14px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.pane-switch button {
+  border: 0 !important;
+  border-radius: 9px;
+}
+
+/* ---------- Μπάρα όψεων: κάψουλα που επιπλέει στο κάτω μέρος ---------- */
+.view-toolbar {
+  position: absolute;
+  left: 50%;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  translate: -50% 0;
+  z-index: 5;
+  max-width: calc(100% - 24px);
+  padding: 6px;
+  gap: 4px;
+  border-radius: 999px;
+  scrollbar-width: none;
+}
+
+.view-toolbar::-webkit-scrollbar {
+  display: none;
+}
+
+.tp-pane {
+  position: relative;
+}
+
+.view-button {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  font-size: 0.92rem;
+  transition:
+    background var(--dur-fast, 0.15s) ease,
+    border-color var(--dur-fast, 0.15s) ease;
+}
+
+.view-button:hover {
+  border-color: transparent;
+  background: var(--glass-fill-soft);
+}
+
+.view-button[aria-pressed='true'],
+.segmented button[aria-checked='true'],
+.primary-button {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 82%, #fff), var(--accent));
+  border-color: transparent;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 4px 14px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.view-button.fit {
+  margin-left: 0;
+  border-style: solid;
+}
+
+/* κουμπί πλήρους οθόνης */
+.fs-fab {
+  border-radius: 14px;
+}
+
+/* ---------- Κουμπιά, πεδία, επιλογές ---------- */
+.secondary-button,
+.template-card,
+.projection-option,
+.pill,
+select,
+.segmented,
+.tb-field input,
+.lock-dialog input {
+  background: var(--glass-fill-soft);
+  border-color: var(--glass-line);
+}
+
+.secondary-button,
+.primary-button,
+.template-card,
+.projection-option,
+select {
+  border-radius: 12px;
+}
+
+.segmented {
+  border-radius: 12px;
+  padding: 3px;
+  gap: 3px;
+  overflow: hidden;
+}
+
+.segmented button {
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+}
+
+/* ο δείκτης που γλιστράει έχει τη μορφή του ενεργού κουμπιού */
+.segmented[data-slide]::before {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 82%, #fff), var(--accent));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 4px 14px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.template-card[aria-checked='true'],
+.projection-option[aria-checked='true'],
+.pill[aria-pressed='true'] {
+  background: var(--accent-weak);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+.theme-toggle {
+  background: var(--glass-fill-soft);
+  border-color: var(--glass-edge);
+}
+
+/* ---------- Αναδυόμενα ---------- */
+.menu,
+.theme-menu,
+.scale-popover,
+.view-popover,
+.lock-dialog {
+  background: var(--glass-fill-strong);
+  border-radius: 16px;
+}
+
+.lock-backdrop {
+  background: rgba(10, 15, 25, 0.35);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+.chip {
+  background: var(--glass-fill-strong);
+}
+
+/* ---------- Φύλλο όψεων ---------- */
+.sheet-pane {
+  background: transparent;
+}
+
+.sheet-toolbar {
+  border-radius: 16px;
+  margin: 0 10px;
+}
+
+/* ---------- Κινητό ---------- */
+@media (max-width: 899px) {
+  .app-main {
+    padding: 8px;
+    gap: 8px;
+  }
+  .viewer-pane {
+    border-bottom: 1px solid var(--glass-edge);
+  }
+  .view-toolbar {
+    left: 8px;
+    right: 8px;
+    translate: none;
+    max-width: none;
+  }
+  /* Τ+Π: με τα περιθώρια του γυαλιού η προβολή ήταν ψηλότερη από την οθόνη και τα κουμπιά στη γωνία έβγαιναν έξω */
+  .app-main.tp-mode .tp-pane {
+    min-height: calc(100dvh - 152px);
+  }
+}
+
+/* ---------- Πλήρης οθόνη: χωρίς περιθώρια ---------- */
+.viewer-pane:fullscreen,
+.viewer-pane.css-fullscreen {
+  border-radius: 0;
+  background: var(--glass-ambient);
+}
+
+/* Χωρίς διαφάνειες όταν το ζητά το σύστημα */
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --glass-fill: var(--glass-fill-strong);
+    --glass-blur: none;
+  }
+}

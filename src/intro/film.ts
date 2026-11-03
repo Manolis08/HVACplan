@@ -3,7 +3,7 @@
 // pixel (ό,τι είναι κοντά στον φακό θολώνει πολύ, ό,τι είναι πίσω από την εστίαση ελάχιστα). Κάθε καρέ
 // υπολογίζεται μόνο από τον χρόνο t μέσα στο seek(t).
 import { FLOORS } from './floors';
-import { makeTimeline, type Piece } from './timeline';
+import { INTRO, makeTimeline, type Piece } from './timeline';
 
 export interface IntroLayout {
   width: number;
@@ -11,11 +11,14 @@ export interface IntroLayout {
   dpr: number;
   pad: number;
   page: string;
+  /** ολόκληρη η οθόνη με όλα τα στοιχεία στη θέση τους: το τελευταίο καρέ είναι ακριβώς αυτή (σκιές, γυαλιά, κ.λπ.) */
+  full?: string;
   pieces: (Piece & { file: string })[];
 }
 
 export interface IntroImages {
   page: ImageBitmap;
+  full: ImageBitmap | null;
   pieces: ImageBitmap[];
 }
 
@@ -31,8 +34,8 @@ export async function loadImages(base: string, layout: IntroLayout): Promise<Int
     if (!res.ok) throw new Error(file);
     return createImageBitmap(await res.blob(), { premultiplyAlpha: 'premultiply', colorSpaceConversion: 'none' });
   };
-  const [page, ...pieces] = await Promise.all([load(layout.page), ...layout.pieces.map((p) => load(p.file))]);
-  return { page, pieces };
+  const [page, full, ...pieces] = await Promise.all([load(layout.page), layout.full ? load(layout.full) : null, ...layout.pieces.map((p) => load(p.file))]);
+  return { page, full, pieces };
 }
 
 const QUAD_VS = `#version 300 es
@@ -83,7 +86,7 @@ void main() {
     c = texture(uTex, vLocal / (2.0 * uHalf) + 0.5);
     float d = sdRound(vLocal, uHalf, uCorner);
     float aa = max(fwidth(d), 1e-3);
-    c *= 1.0 - smoothstep(-aa, aa, d);
+    c *= (1.0 - smoothstep(-aa, aa, d)) * uOpacity;
   } else if (uMode == 1) {
     c = texture(uTex, vLocal / (2.0 * uHalf) + 0.5);
   } else if (uMode == 2) {
@@ -225,11 +228,17 @@ export function createFilm(canvas: HTMLCanvasElement, layout: IntroLayout, image
   };
   const pageTex = texture(images.page);
   const pieceTex = images.pieces.map(texture);
+  const fullTex = images.full ? texture(images.full) : null;
 
   // στόχοι απόδοσης: χρώμα (με mipmaps για το θόλωμα) και βάθος
-  let W = 0, H = 0, RW = 0, RH = 0, scale = Math.min(window.devicePixelRatio || 1, 1.5);
+  let W = 0, H = 0, RW = 0, RH = 0, scale = Math.min(window.devicePixelRatio || 1, 3); // ίδια ανάλυση με την εφαρμογή, ώστε το τελευταίο καρέ να ταιριάζει
+  const fullScale = scale;
   let colorTex: WebGLTexture | null = null, depthTex: WebGLTexture | null = null, fbo: WebGLFramebuffer | null = null;
-  let tl = makeTimeline({ w: layout.width, h: layout.height }, { w: 1, h: 1 }, mobile);
+  // το «χαρτί» του φιλμ έχει το μέγεθος του παραθύρου: η φωτογραφία (και τα στοιχεία της) τεντώνονται από το μέγεθος
+  // που φωτογραφίστηκε στο μέγεθος που έχει τώρα το παράθυρο, ώστε το τελευταίο καρέ να έχει το ίδιο πλαίσιο με την εφαρμογή
+  let PW = layout.width, PH = layout.height;
+  let pcs: (Piece & { file: string })[] = layout.pieces;
+  let tl = makeTimeline({ w: PW, h: PH }, { w: 1, h: 1 }, mobile);
 
   function allocTargets() {
     if (colorTex) gl!.deleteTexture(colorTex);
@@ -257,27 +266,41 @@ export function createFilm(canvas: HTMLCanvasElement, layout: IntroLayout, image
   }
 
   function resize() {
-    W = Math.max(1, canvas.clientWidth);
-    H = Math.max(1, canvas.clientHeight);
+    const w = Math.max(1, canvas.clientWidth);
+    const h = Math.max(1, canvas.clientHeight);
+    if (RW && w === W && h === H && Math.round(w * scale) === RW) return; // ίδιο μέγεθος: δεν ξαναδημιουργούνται οι στόχοι απόδοσης
+    W = w;
+    H = h;
     RW = Math.round(W * scale);
     RH = Math.round(H * scale);
     canvas.width = RW;
     canvas.height = RH;
-    tl = makeTimeline({ w: layout.width, h: layout.height }, { w: W, h: H }, mobile);
+    PW = W;
+    PH = H;
+    const sx = W / layout.width, sy = H / layout.height;
+    pcs = layout.pieces.map((p) => ({ ...p, x: p.x * sx, y: p.y * sy, w: p.w * sx, h: p.h * sy }));
+    tl = makeTimeline({ w: PW, h: PH }, { w: W, h: H }, mobile);
     allocTargets();
   }
   resize();
 
   // αν η συσκευή δεν προλαβαίνει, χαμηλώνει η ανάλυση (μία φορά)
-  let slowFrames = 0, lastNow = 0, lowered = false;
+  let slowFrames = 0, lastNow = 0, lastT = -1, lowered = false;
 
   function seek(t: number) {
     const now = performance.now();
-    if (lastNow && now - lastNow > 26 && !lowered) slowFrames++;
+    // (το ίδιο t δύο φορές = παγωμένο καρέ για έλεγχο, δεν μετράει ως αργή συσκευή)
+    if (lastNow && t !== lastT && now - lastNow > 26 && !lowered) slowFrames++;
     lastNow = now;
+    lastT = t;
     if (slowFrames > 12 && !lowered) {
       lowered = true;
-      scale = 1;
+      scale = Math.max(1, fullScale * 0.5);
+      resize();
+    }
+    // σε αργή συσκευή, η πλήρης ανάλυση επιστρέφει για τη βουτιά: το τελευταίο καρέ πρέπει να είναι ίδιο με την εφαρμογή
+    if (lowered && scale < fullScale && t >= INTRO.dive[0]) {
+      scale = fullScale;
       resize();
     }
 
@@ -313,7 +336,6 @@ export function createFilm(canvas: HTMLCanvasElement, layout: IntroLayout, image
     gl!.uniform1f(quad.u('uDepthScale'), depthScale);
     gl!.uniform1i(quad.u('uTex'), 0);
     gl!.activeTexture(gl!.TEXTURE0);
-    const PW = layout.width, PH = layout.height;
     const draw = (mode: number, rect: number[], half: number[], opts: { lift?: number[]; squash?: number; off?: number[]; opacity?: number; lod?: number; corner?: number }) => {
       gl!.uniform1i(quad.u('uMode'), mode);
       gl!.uniform4f(quad.u('uRect'), rect[0], rect[1], rect[2], rect[3]);
@@ -334,9 +356,9 @@ export function createFilm(canvas: HTMLCanvasElement, layout: IntroLayout, image
     if (cam.pageShadow > 0.001) draw(3, [PW / 2, PH / 2 + 18, PW / 2 + 110, PH / 2 + 110], [PW / 2, PH / 2], { corner: cam.corner, opacity: 0.2 * cam.pageShadow });
     draw(0, [PW / 2, PH / 2, PW / 2, PH / 2], [PW / 2, PH / 2], { corner: cam.corner });
 
-    const lifts = layout.pieces.map((p) => tl.lift(p, t));
+    const lifts = pcs.map((p) => tl.lift(p, t));
     // σκιές: ίδιο σχήμα σε #1a2133, μετατόπιση (0,10z, 4 + 0,36z), θόλωμα 7 + 0,5z, 26 %
-    layout.pieces.forEach((p, i) => {
+    pcs.forEach((p, i) => {
       const { z, a } = lifts[i];
       const off = [0.1 * z, 4 + 0.36 * z];
       const blur = 7 + 0.5 * z;
@@ -348,11 +370,17 @@ export function createFilm(canvas: HTMLCanvasElement, layout: IntroLayout, image
         lod: Math.log2(Math.max(1, blur * layout.dpr * 0.6)),
       });
     });
-    const order = layout.pieces.map((_, i) => i).sort((i, j) => lifts[i].z - lifts[j].z);
+    const order = pcs.map((_, i) => i).sort((i, j) => lifts[i].z - lifts[j].z);
     for (const i of order) {
-      const p = layout.pieces[i];
+      const p = pcs[i];
       gl!.bindTexture(gl!.TEXTURE_2D, pieceTex[i]);
       draw(1, [p.x + p.w / 2, p.y + p.h / 2, p.w / 2, p.h / 2], [p.w / 2, p.h / 2], { lift: [lifts[i].z, lifts[i].a] });
+    }
+    // στο τέλος, η ολόκληρη φωτογραφία της οθόνης μπαίνει σταδιακά πάνω από όλα, ώστε το τελευταίο καρέ να είναι
+    // ακριβώς η εφαρμογή (τα στοιχεία χωριστά δεν έχουν τις σκιές και τα γυαλιά τους)
+    if (fullTex && cam.full > 0.001) {
+      gl!.bindTexture(gl!.TEXTURE_2D, fullTex);
+      draw(0, [PW / 2, PH / 2, PW / 2, PH / 2], [PW / 2, PH / 2], { corner: cam.corner, opacity: cam.full });
     }
 
     // βάθος πεδίου
@@ -384,7 +412,7 @@ export function createFilm(canvas: HTMLCanvasElement, layout: IntroLayout, image
   }
 
   function dispose() {
-    for (const t of [pageTex, ...pieceTex, colorTex, depthTex]) if (t) gl!.deleteTexture(t);
+    for (const t of [pageTex, fullTex, ...pieceTex, colorTex, depthTex]) if (t) gl!.deleteTexture(t);
     if (fbo) gl!.deleteFramebuffer(fbo);
     gl!.deleteBuffer(vbo);
     gl!.getExtension('WEBGL_lose_context')?.loseContext();

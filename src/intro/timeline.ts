@@ -53,6 +53,8 @@ export interface CameraFrame {
   /** μετατόπιση του κέντρου του φακού (κλάσμα του μισού ύψους): το σημείο εστίασης λίγο πιο ψηλά στο κάδρο,
    *  ώστε η εφαρμογή να γεμίζει το κάδρο χωρίς να γυρίσει η κάμερα */
   shift: number;
+  /** πόσο φαίνεται η ολόκληρη φωτογραφία της οθόνης πάνω από τα χωριστά στοιχεία (0…1) */
+  full: number;
 }
 
 export interface Piece {
@@ -172,6 +174,7 @@ export function makeTimeline(page: { w: number; h: number }, view: { w: number; 
       corner: CORNER * (1 - dive),
       pageShadow: 1 - dive,
       shift: P.shift * (1 - smooth(t / 4.6)),
+      full: ramp(t, 5.5, 6.3),
     };
   }
 

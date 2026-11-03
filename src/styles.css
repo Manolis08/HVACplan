@@ -240,6 +240,58 @@ select {
   stroke-width: 1;
 }
 
+/* Κρυμμένη κορυφή μιας γραμμής επέκτασης: οι ακμές της ως διακεκομμένες γραμμές (όπως οι κρυμμένες ακμές όταν είναι
+   ενεργές οι διακεκομμένες) που ξεθωριάζουν προς τα έξω (βλ. dimLayout.ts) */
+.dims-overlay .dim-ghost {
+  fill: none;
+  stroke-width: 1.6;
+  stroke-dasharray: 4 4;
+  stroke-linecap: butt;
+}
+
+/* Τ+Π στο φωτεινό φόντο: οι διαστάσεις μαύρες (το γκρι δεν φαίνεται καλά πάνω στα σκούρα κομμάτια) */
+:root[data-theme='light'] .tp-viewer {
+  --dim: #000000;
+}
+
+/* Διάσταση που αλλάζει ο χρήστης τώρα (βλ. focusDim στο Viewer): μεγαλώνει και αναβοσβήνει */
+.dims-overlay g.dim.dim-focus .dim-label {
+  font-size: 22px;
+  fill: var(--accent);
+  animation: dim-blink 0.9s ease-in-out infinite;
+}
+
+.dims-overlay g.dim.dim-focus .dim-line,
+.dims-overlay g.dim.dim-focus .dim-ext {
+  stroke: var(--accent);
+  stroke-width: 2;
+  animation: dim-blink 0.9s ease-in-out infinite;
+}
+
+.dims-overlay g.dim.dim-focus .dim-arrow {
+  fill: var(--accent);
+  animation: dim-blink 0.9s ease-in-out infinite;
+}
+
+@keyframes dim-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.2;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dims-overlay g.dim.dim-focus .dim-label,
+  .dims-overlay g.dim.dim-focus .dim-line,
+  .dims-overlay g.dim.dim-focus .dim-ext,
+  .dims-overlay g.dim.dim-focus .dim-arrow {
+    animation: none;
+  }
+}
+
 .dims-overlay .dim-arrow {
   fill: var(--dim);
 }
@@ -414,54 +466,57 @@ select {
 }
 
 .fields {
+  display: flex;
+  flex-direction: column;
+}
+
+/* μία γραμμή ανά μέτρο: όνομα αριστερά, τιμή δεξιά με λεπτή υπογράμμιση */
+.field {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 10px;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  column-gap: 12px;
+  padding: 4px 0;
 }
 
 .field label {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
   gap: 6px;
-  font-size: 0.82rem;
-  color: var(--muted);
-  margin-bottom: 4px;
-  min-height: 2.3em;
-  line-height: 1.15;
+  font-size: 0.86rem;
+  color: var(--text);
+  line-height: 1.2;
 }
 
 .axis-tag {
   flex: 0 0 auto;
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   font-weight: 700;
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: var(--surface-2);
   color: var(--muted);
+  opacity: 0.7;
 }
 
 .input-wrap {
   display: flex;
-  align-items: center;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--input-bg);
-  overflow: hidden;
+  align-items: baseline;
+  width: 104px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  transition: border-color var(--dur-fast, 0.15s) ease;
 }
 
 .input-wrap:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-weak);
+  border-bottom-color: var(--accent);
 }
 
 .input-wrap.invalid {
-  border-color: var(--danger);
-  box-shadow: 0 0 0 3px var(--danger-weak);
+  border-bottom-color: var(--danger);
 }
 
 .input-wrap.locked {
-  background: var(--surface-2);
+  opacity: 0.6;
 }
 
 .input-wrap input {
@@ -469,16 +524,22 @@ select {
   min-width: 0;
   border: 0;
   outline: none;
-  padding: 8px 10px;
+  padding: 5px 2px;
+  text-align: right;
   font-size: 16px; /* χωρίς αυτόματο zoom στο iPhone */
   background: transparent;
   font-variant-numeric: tabular-nums;
 }
 
 .unit {
-  padding: 0 10px 0 0;
-  font-size: 0.82rem;
+  padding: 0 0 0 4px;
+  font-size: 0.72rem;
   color: var(--muted);
+}
+
+.field > .field-hint,
+.field > .field-error {
+  grid-column: 1 / -1;
 }
 
 .field-hint {
@@ -514,18 +575,16 @@ select {
 }
 
 .info {
-  margin: 12px 0 0;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: var(--surface-2);
-  font-size: 0.83rem;
+  margin: 10px 0 0;
+  padding: 0;
+  font-size: 0.78rem;
 }
 
 .info div {
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  padding: 3px 0;
+  padding: 2px 0;
 }
 
 .info dt {
@@ -586,6 +645,44 @@ select {
   background: var(--accent);
   color: var(--accent-fg);
   font-weight: 600;
+}
+
+/* Δείκτης που γλιστράει κάτω από την ενεργή επιλογή (βλ. src/ui/segmentedSlide.ts) */
+.segmented[data-slide] {
+  position: relative;
+  isolation: isolate;
+}
+
+.segmented[data-slide]::before {
+  content: '';
+  position: absolute;
+  left: var(--seg-x);
+  top: var(--seg-y);
+  width: var(--seg-w);
+  height: var(--seg-h);
+  border-radius: var(--seg-r, 0);
+  background: var(--accent);
+  z-index: -1;
+  pointer-events: none;
+}
+
+.segmented[data-slide-ready]::before {
+  transition:
+    left var(--dur) var(--ease-out),
+    width var(--dur) var(--ease-out),
+    top var(--dur) var(--ease-out),
+    height var(--dur) var(--ease-out);
+}
+
+.segmented[data-slide] button[aria-checked='true'] {
+  background: transparent;
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .segmented[data-slide-ready]::before {
+    transition: none;
+  }
 }
 
 .custom-scale {
@@ -1562,6 +1659,49 @@ body,
   font-size: 0.95rem;
 }
 
+/* Μενού όψεων (κάτω από το κουμπί «Όψη» πάνω αριστερά) */
+.view-popover {
+  position: absolute;
+  top: 52px;
+  left: 10px;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  width: min(300px, calc(100% - 20px));
+  max-height: calc(100% - 64px);
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  transform-origin: top left;
+  animation: popover-in var(--dur) var(--ease-out) both;
+}
+
+.view-option {
+  min-height: 38px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.view-option:hover {
+  background: var(--accent-weak);
+}
+
+.view-option[aria-checked='true'] {
+  background: var(--accent-weak);
+  font-weight: 600;
+}
+
+
 @keyframes popover-in {
   from {
     opacity: 0;
@@ -2005,7 +2145,6 @@ body {
   --panel: #36393e;
   --border: #4a4e55;
   --muted: #b0b4ba;
-  --accent-weak: #2c3e55;
   --icon-fill: #474b52;
   --header-bg: #222427;
   --viewer-bg: #34373b;
@@ -2022,7 +2161,6 @@ body {
   --panel: #0e0e0f;
   --border: #26272a;
   --muted: #9a9ca1;
-  --accent-weak: #13233a;
   --icon-fill: #1e1f22;
   --header-bg: #000000;
   --viewer-bg: #000000;
@@ -2037,6 +2175,17 @@ body {
 /* ---------- Κουμπί «Φόντο» ---------- */
 .theme-picker {
   position: relative;
+}
+
+.theme-toggle.swatch-only {
+  min-width: 34px;
+  padding: 0;
+  justify-content: center;
+}
+
+.theme-toggle.swatch-only .swatch {
+  width: 20px;
+  height: 20px;
 }
 
 .theme-toggle .swatch,
@@ -2181,11 +2330,10 @@ body {
   width: 40px;
   height: 40px;
   padding: 0;
-  border: 1px solid var(--border);
+  border: 0;
   border-radius: 10px;
-  background: var(--chip-bg);
+  background: transparent;
   color: var(--text);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   cursor: pointer;
   opacity: 0;
   transform: scale(0.92);
@@ -2196,8 +2344,11 @@ body {
     border-color var(--dur-fast) ease;
 }
 
+.fs-fab svg {
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+}
+
 .fs-fab:hover {
-  border-color: var(--accent);
   color: var(--accent);
 }
 
@@ -2210,6 +2361,47 @@ body {
   opacity: 1;
   transform: none;
   pointer-events: auto;
+}
+
+/* Εργαλεία κάτω αριστερά (βλ. src/ui/CornerTools.tsx): η ισομετρική είναι πάντα στη γωνία, και από πάνω της το βελάκι
+   που ανοίγει τα υπόλοιπα κουμπιά. Κάτω δεξιά μένει το κουμπί πλήρους οθόνης. */
+.corner-tools {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: center;
+  gap: 8px;
+}
+
+.tool-extras {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+}
+
+.corner-tools .fs-fab {
+  position: static;
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+.tool-extras .fs-fab {
+  animation: tool-in var(--dur) var(--ease-out) both;
+}
+
+@keyframes tool-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* Οθόνες αφής (κινητό, tablet): πάντα ορατό. */
@@ -2407,17 +2599,38 @@ body {
 }
 
 /* Μπάρα που σέρνεται, παράλληλα στη μεγάλη ακμή */
-.tp-track {
+.tp-topbar {
   position: absolute;
-  visibility: hidden;
-  height: 36px;
-  transform-origin: 0 50%;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  pointer-events: none;
+}
+
+.tp-topbar .chip {
+  position: static;
+  flex: none;
+}
+
+/* Μπάρα του Τ+Π: σταθερή γραμμή δίπλα στην ένδειξη «Όψη», με το ποσοστό και το κουμπί αναπαραγωγής */
+.tp-track {
+  flex: 1 1 150px;
+  min-width: 0;
+  height: 34px;
   display: flex;
   align-items: center;
+  gap: 10px;
+  pointer-events: auto;
 }
 
 .tp-track input {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   margin: 0;
   accent-color: var(--accent);
   cursor: grab;
@@ -2428,45 +2641,28 @@ body {
 }
 
 .tp-track-label {
-  position: absolute;
-  right: 0;
-  bottom: 100%;
-  padding: 1px 6px;
-  border-radius: 6px;
-  background: var(--chip-bg);
-  color: var(--muted);
-  font-size: 0.75rem;
-  white-space: nowrap;
+  flex: none;
+  min-width: 3em;
+  text-align: right;
+  color: var(--text);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
   pointer-events: none;
 }
 
-.tp-track-label strong {
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-}
-
-/* Κουμπί αναπαραγωγής στο τέλος της μπάρας (μένει όρθιο όσο γέρνει η μπάρα) */
+/* Κουμπί αναπαραγωγής στο τέλος της μπάρας */
 .tp-play {
-  position: absolute;
-  left: calc(100% + 10px);
-  top: 50%;
-  translate: 0 -50%;
-  rotate: calc(-1 * var(--ang, 0rad));
+  flex: none;
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   padding: 0;
   border: 1px solid var(--border);
   border-radius: 50%;
   background: var(--chip-bg);
   color: var(--accent);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   cursor: pointer;
-  pointer-events: auto;
-  transition:
-    border-color var(--dur-fast) ease,
-    background var(--dur-fast) ease;
 }
 
 .tp-play:hover {

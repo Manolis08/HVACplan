@@ -20,13 +20,32 @@ import { SheetLock } from './ui/SheetLock';
 import { SheetView } from './ui/SheetView';
 import { ThemePicker } from './ui/ThemePicker';
 import { TpView } from './ui/TpView';
-import { ViewToolbar } from './ui/ViewToolbar';
 import type { DimsMode } from './viewer/dimLayout';
 import { FACE_COLORS, Viewer, type ViewerApi } from './viewer/Viewer';
-import { viewLabel, type ViewId } from './viewer/views';
+import { CornerTools } from './ui/CornerTools';
+import { ColorsButton, DashedButton } from './ui/CornerToggles';
+import { LabelsButton } from './ui/LabelsButton';
+import { VIEWS, viewLabel, type ViewId } from './viewer/views';
 import { Icon } from './ui/Icon';
+import { wantIntro } from './intro/wantIntro';
 
-const saved = loadState();
+/**
+ * Όταν παίζει το intro, η εφαρμογή ανοίγει πάντα στον ΚΥΒΟ με τις αρχικές του τιμές και όλες τις ετικέτες, όπως ακριβώς
+ * τον δείχνει το φιλμ (αλλιώς το τέλος του φιλμ δεν θα ταίριαζε με την εφαρμογή). Τα υπόλοιπα σχήματα, η σειρά και τα ονόματά
+ * τους, και το θέμα φόντου μένουν όπως τα όρισε ο χρήστης.
+ */
+function openingState(s: ReturnType<typeof loadState>): ReturnType<typeof loadState> {
+  if (!wantIntro()) return s;
+  const cube = 'notched-cube';
+  const without = <T,>(rec: Record<string, T> | undefined) => {
+    const out = { ...rec };
+    delete out[cube];
+    return out;
+  };
+  return { ...s, templateId: cube, inputs: without(s.inputs), toggles: without(s.toggles), viewerScales: without(s.viewerScales), dimsMode: 'all' };
+}
+
+const saved = openingState(loadState());
 
 const initialInputs = () =>
   Object.fromEntries(TEMPLATES.map((t) => [t.id, { ...defaultInputs(t), ...saved.inputs?.[t.id] }]));
@@ -35,11 +54,11 @@ const initialToggles = () =>
 
 const NO_OPTIONS: FileOptions = { unit: null, up: null, rotation: IDENTITY, confirmed: false };
 
-const DIMS_MODES: { id: DimsMode; label: string }[] = [
-  { id: 'all', label: 'Όλες' },
-  { id: 'essential', label: 'Απαραίτητες' },
-  { id: 'none', label: 'Καμία' },
-];
+/** Το κουμπί ετικετών διαστάσεων γυρίζει με τη σειρά: όλες → απαραίτητες → καμία → όλες. */
+const nextDimsMode = (m: DimsMode): DimsMode => (m === 'all' ? 'essential' : m === 'essential' ? 'none' : 'all');
+
+/** Οι όψεις που έχει το μενού «Όψη» (η ισομετρική έχει δικό της κουμπί κάτω δεξιά). */
+const MENU_VIEWS: ViewId[] = ['front', 'top', 'right', 'left'];
 
 export default function App() {
   const [templateId, setTemplateId] = useState(saved.templateId ?? TEMPLATES[0].id);
@@ -51,6 +70,7 @@ export default function App() {
   const [sheetScales, setSheetScales] = useState<Record<string, ShapeScale>>(saved.sheetScales ?? {});
   // Γωνία προβολής: πάντα 1η (Ευρωπαϊκή, ISO E).
   const projection: ProjectionAngle = 'first';
+  // Ετικέτες διαστάσεων (όλες / απαραίτητες / καμία): αλλάζουν με το κουμπί στη γωνία της προβολής.
   const [dimsMode, setDimsMode] = useState<DimsMode>(saved.dimsMode ?? 'all');
   // Σειρά και ονόματα των έτοιμων σχημάτων, όπως τα όρισε ο χρήστης (αποθηκεύονται στη συσκευή).
   const [templateOrder, setTemplateOrder] = useState<string[]>(saved.templateOrder ?? []);
@@ -68,6 +88,8 @@ export default function App() {
   // Κρυφές γραμμές στο 3D: σβηστές σε κάθε άνοιγμα της εφαρμογής.
   const [showHidden, setShowHidden] = useState(false);
   const [colorMode, setColorMode] = useState(false);
+  // Η διάσταση που αλλάζει ο χρήστης τώρα: η ετικέτα της μεγαλώνει και αναβοσβήνει στο 3D.
+  const [focusDim, setFocusDim] = useState<string | null>(null);
   // Παράθυρο κλίμακας 3D (ανοίγει από το κουμπί «Κλίμακα» πάνω δεξιά στην προβολή).
   const [scaleOpen, setScaleOpen] = useState(false);
   const scaleChipRef = useRef<HTMLButtonElement>(null);
@@ -91,6 +113,32 @@ export default function App() {
       document.removeEventListener('keydown', onKey);
     };
   }, [scaleOpen]);
+  // Μενού όψεων (ανοίγει από το κουμπί «Όψη» πάνω αριστερά στην προβολή).
+  const [viewOpen, setViewOpen] = useState(false);
+  const viewChipRef = useRef<HTMLButtonElement>(null);
+  const viewPopoverRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!viewOpen) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (!viewPopoverRef.current?.contains(t) && !viewChipRef.current?.contains(t)) setViewOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setViewOpen(false);
+        viewChipRef.current?.focus();
+      }
+    };
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [viewOpen]);
+  useEffect(() => {
+    if (pane !== '3d') setViewOpen(false);
+  }, [pane]);
   // Πλήρης οθόνη της προβολής (3D ή φύλλο όψεων). Όπου ο browser δεν την υποστηρίζει για
   // στοιχεία σελίδας (π.χ. iPhone), η προβολή απλώνεται σε όλο το παράθυρο με CSS.
   const viewerPaneRef = useRef<HTMLElement>(null);
@@ -283,7 +331,7 @@ export default function App() {
     [shapeKey],
   );
   const viewerPart = fileMode && filePart ? filePart : shownPart;
-  const effectiveDims: DimsMode = fileMode && (!file || !fileOptions.confirmed) ? 'none' : dimsMode;
+  const effectiveDims: DimsMode = (fileMode && (!file || !fileOptions.confirmed)) ? 'none' : dimsMode;
   const openMesh = fileMode && !!file && (file.prepared.stats.boundaryEdges > 0 || file.prepared.stats.nonManifoldEdges > 0);
   const edgeCount = viewerPart.edges.length / 6;
   const sheetBlocked = fileMode
@@ -310,7 +358,6 @@ export default function App() {
       <header className="app-header">
         <h1>HVACplan</h1>
         <div className="header-right">
-          <span className="header-note">Μονάδες: mm</span>
           <ThemePicker value={theme} onChange={setTheme} />
         </div>
       </header>
@@ -361,7 +408,7 @@ export default function App() {
               overlay={fullscreenButton}
             />
           )}
-          {pane === 'tp' && <TpView theme={theme} dimsMode={dimsMode} showHidden={showHidden} colorMode={colorMode} />}
+          {pane === 'tp' && <TpView theme={theme} dimsMode={dimsMode === 'none' ? 'all' : dimsMode} />}
           <div className="viewer" hidden={pane !== '3d'}>
             {fullscreenButton}
             <Viewer
@@ -371,13 +418,55 @@ export default function App() {
               dimsMode={effectiveDims}
               showHidden={showHidden}
               colorMode={colorMode}
+              focusDim={focusDim}
               theme={theme}
               shape={{ key: shapeKey, index: fileMode ? -1 : orderedTemplates.findIndex((t) => t.id === templateId) }}
               onViewChange={setView}
             />
-            <div className="chip chip-view" aria-live="polite">
-              Όψη: <strong>{viewLabel(view)}</strong>
-            </div>
+            <button
+              ref={viewChipRef}
+              type="button"
+              className={`chip chip-view chip-button${viewOpen ? ' open' : ''}`}
+              aria-expanded={viewOpen}
+              aria-haspopup="menu"
+              aria-controls="view-popover"
+              aria-label={`Όψη: ${viewLabel(view)}. Πάτα για αλλαγή.`}
+              onClick={() => {
+                setScaleOpen(false);
+                setViewOpen((o) => !o);
+              }}
+            >
+              Όψη: <strong>{viewLabel(view)}</strong> <Icon name="chevron" size={12} className="chevron" />
+            </button>
+            {viewOpen && (
+              <div ref={viewPopoverRef} id="view-popover" className="view-popover" role="menu" aria-label="Όψεις">
+                {VIEWS.filter((v) => MENU_VIEWS.includes(v.id)).map((v) => (
+                  <button
+                    key={v.id}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={view === v.id}
+                    className="view-option"
+                    onClick={() => {
+                      viewerRef.current?.goTo(v.id);
+                      setViewOpen(false);
+                    }}
+                  >
+                    {v.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            <CornerTools
+              onIso={() => {
+                setViewOpen(false);
+                viewerRef.current?.goTo('iso');
+              }}
+            >
+              <LabelsButton mode={dimsMode} onClick={() => setDimsMode(nextDimsMode)} />
+              <ColorsButton on={colorMode} onClick={() => setColorMode((c) => !c)} />
+              <DashedButton on={showHidden} onClick={() => setShowHidden((v) => !v)} />
+            </CornerTools>
             <button
               ref={scaleChipRef}
               type="button"
@@ -385,7 +474,10 @@ export default function App() {
               aria-expanded={scaleOpen}
               aria-controls="scale-popover"
               aria-label={`Κλίμακα 3D: ${scaleLabel(viewerScale)}. Πάτα για αλλαγή.`}
-              onClick={() => setScaleOpen((o) => !o)}
+              onClick={() => {
+                setViewOpen(false);
+                setScaleOpen((o) => !o);
+              }}
             >
               Κλίμακα <strong>{scaleLabel(viewerScale)}</strong> <Icon name="chevron" size={12} className="chevron" />
               {viewerScale.n !== 1 && <span className="chip-sub">{scaleHint(viewerScale)}</span>}
@@ -413,13 +505,6 @@ export default function App() {
               </div>
             )}
           </div>
-          {pane === '3d' && (
-            <ViewToolbar
-              current={view}
-              onSelect={(v) => viewerRef.current?.goTo(v)}
-              onFit={() => viewerRef.current?.fit()}
-            />
-          )}
         </section>
 
         {/* Στην καρτέλα Τ+Π η πλαϊνή στήλη (σχήματα, διαστάσεις) δεν χρειάζεται. */}
@@ -475,6 +560,7 @@ export default function App() {
                   inputs={inputs[template.id]}
                   toggles={toggles[template.id]}
                   evaluation={evaluation}
+                  onFocusDim={setFocusDim}
                   onInput={(key, value) =>
                     setInputs((prev) => ({ ...prev, [template.id]: { ...prev[template.id], [key]: value } }))
                   }
@@ -498,27 +584,9 @@ export default function App() {
             </section>
           )}
 
-          {pane === '3d' && (
+          {pane === '3d' && (colorMode || (showHidden && (edgeCount > 10000 || openMesh))) && (
             <section className="card">
               <h2>Εμφάνιση στο 3D</h2>
-              <div className="toggle-buttons">
-                <button
-                  type="button"
-                  className={`secondary-button color-mode${showHidden ? ' on' : ''}`}
-                  aria-pressed={showHidden}
-                  onClick={() => setShowHidden((v) => !v)}
-                >
-                  Διακεκομμένες γραμμές: {showHidden ? 'ON' : 'OFF'}
-                </button>
-                <button
-                  type="button"
-                  className={`secondary-button color-mode${colorMode ? ' on' : ''}`}
-                  aria-pressed={colorMode}
-                  onClick={() => setColorMode((c) => !c)}
-                >
-                  Χρώματα όψεων: {colorMode ? 'ON' : 'OFF'}
-                </button>
-              </div>
               {showHidden && edgeCount > 10000 && (
                 <p className="warning">Το μοντέλο έχει {edgeCount.toLocaleString('el-GR')} ακμές· η προβολή μπορεί να είναι πιο αργή.</p>
               )}
@@ -531,20 +599,6 @@ export default function App() {
                   <li><i style={{ background: FACE_COLORS.other }} />Υπόλοιπες έδρες</li>
                 </ul>
               )}
-              <p className="field-label">Ετικέτες διαστάσεων</p>
-              <div className="segmented" role="radiogroup" aria-label="Ετικέτες διαστάσεων">
-                {DIMS_MODES.map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={dimsMode === m.id}
-                    onClick={() => setDimsMode(m.id)}
-                  >
-                    {m.label}
-                  </button>
-                ))}
-              </div>
             </section>
           )}
         </aside>

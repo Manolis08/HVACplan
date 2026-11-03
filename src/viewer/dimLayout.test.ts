@@ -105,3 +105,71 @@ describe('απαραίτητες διαστάσεις', () => {
     expect(svg).toContain('data-dim="P"');
   });
 });
+
+describe('γραμμές επέκτασης από κρυμμένες κορυφές', () => {
+  const svgFor = (view: ViewId) => {
+    const { project, viewDir } = projector(view);
+    return layoutDims({
+      dims: part.dims,
+      project,
+      viewDir,
+      corners: bboxCorners(part.bbox),
+      scale: { kind: 'reduce', n: 1 },
+      mode: 'all',
+      edges: part.edges,
+      triangles: part.triangles,
+      cornerGhosts: true,
+    });
+  };
+
+  it('όψη από αριστερά: η κρυμμένη κορυφή δείχνει τις ακμές της ως γραμμές που ξεθωριάζουν', () => {
+    const svg = svgFor('left');
+    expect(svg).toContain('class="dim-ghost"');
+    expect(svg).toContain('linearGradient');
+  });
+
+  it('πρόσοψη και ισομετρική: οι κορυφές των γραμμών επέκτασης φαίνονται, άρα δεν προστίθεται τίποτα', () => {
+    expect(svgFor('front')).not.toContain('dim-ghost');
+    expect(svgFor('iso')).not.toContain('dim-ghost');
+  });
+
+  it('με ενεργές τις διακεκομμένες γραμμές, δεν προστίθεται τίποτα (οι κρυμμένες ακμές φαίνονται ήδη)', () => {
+    const { project, viewDir } = projector('left');
+    const svg = layoutDims({
+      dims: part.dims,
+      project,
+      viewDir,
+      corners: bboxCorners(part.bbox),
+      scale: { kind: 'reduce', n: 1 },
+      mode: 'all',
+      edges: part.edges,
+      triangles: part.triangles,
+      cornerGhosts: true,
+      hiddenLinesShown: true,
+    });
+    expect(svg).not.toContain('dim-ghost');
+  });
+
+  it('όταν η κάμερα είναι σε μία από τις όψεις (όχι ελεύθερη περιστροφή), δεν προστίθεται τίποτα', () => {
+    const { project, viewDir } = projector('left');
+    const svg = layoutDims({
+      dims: part.dims,
+      project,
+      viewDir,
+      corners: bboxCorners(part.bbox),
+      scale: { kind: 'reduce', n: 1 },
+      mode: 'all',
+      edges: part.edges,
+      triangles: part.triangles,
+      cornerGhosts: false,
+    });
+    expect(svg).not.toContain('dim-ghost');
+  });
+
+  it('χωρίς τρίγωνα ή χωρίς ακμές, η διάταξη μένει ίδια με πριν', () => {
+    const { project, viewDir } = projector('left');
+    const base = { dims: part.dims, project, viewDir, corners: bboxCorners(part.bbox), scale: { kind: 'reduce' as const, n: 1 }, mode: 'all' as const };
+    expect(layoutDims({ ...base, cornerGhosts: true, edges: part.edges })).not.toContain('dim-ghost');
+    expect(layoutDims({ ...base, cornerGhosts: true, triangles: part.triangles })).not.toContain('dim-ghost');
+  });
+});

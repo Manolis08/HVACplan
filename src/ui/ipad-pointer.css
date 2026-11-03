@@ -29,8 +29,7 @@
     height 0.22s cubic-bezier(0.2, 0.8, 0.2, 1),
     border-radius 0.22s cubic-bezier(0.2, 0.8, 0.2, 1),
     background-color 0.22s ease,
-    opacity 0.18s ease,
-    scale 0.12s ease;
+    opacity 0.18s ease;
 }
 
 .ipad-pointer-dot.is-hidden {
@@ -43,6 +42,14 @@
   border-color: rgb(255 255 255 / 0.25);
 }
 
-.ipad-pointer-dot.is-press {
-  scale: 0.86;
+/* πάνω σε χεράκι: ο κύκλος γίνεται το σχήμα του χεριού (μάσκα) */
+.ipad-pointer-dot.is-shape {
+  background: rgb(120 124 132 / 0.45);
+  border-color: transparent;
+  box-shadow: none;
+}
+
+/* όσο σέρνεις (3D αντικείμενο, χεράκι του Τ+Π, μπάρα) ο κύκλος εξαφανίζεται */
+.ipad-pointer-dot.is-dragging {
+  opacity: 0;
 }

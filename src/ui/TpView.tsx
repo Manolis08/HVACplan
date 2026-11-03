@@ -7,6 +7,8 @@ import { atHome, createDrag, nearHome, stepDrag, type DragBody } from '../model/
 import type { BBox, Vec3 } from '../model/types';
 import type { DimsMode } from '../viewer/dimLayout';
 import { COMPACT_STYLE } from '../viewer/dimLayout';
+import { CornerTools } from './CornerTools';
+import { LabelsButton } from './LabelsButton';
 import { Viewer, type FloatPose, type Project, type ViewerApi } from '../viewer/Viewer';
 import { viewLabel, type ViewId } from '../viewer/views';
 import { HandPose } from './HandPose';
@@ -24,9 +26,9 @@ const ORDER: Record<Show, number> = { T: 0, both: 1, P: 2 };
 const { W, T, LA, LB, TL } = TP;
 
 /** Μέγεθος του χεριού στο μοντέλο (mm), το ύψος του πάνω από την επιφάνεια (1 mm) και το ελάχιστο μέγεθος σε pixel (να πατιέται στο κινητό). */
-const HAND_MM = 14;
+const HAND_MM = 12.5;
 const HAND_LIFT = 1;
-const MIN_HAND_PX = 40;
+const MIN_HAND_PX = 36;
 
 /**
  * Σύρσιμο (ragdoll): όταν κρατάς πατημένο το χεράκι και κουνήσεις το ποντίκι πάνω από αυτό το όριο (px),
@@ -82,20 +84,12 @@ interface Drag {
   last: number;
 }
 
-/** Απόσταση της μπάρας από την ακμή, σε pixel. */
-const TRACK_OFFSET = 22;
-const TRACK_HEIGHT = 36;
-/** Κάτω από αυτό το μήκος (π.χ. πλάγια όψη, όπου η ακμή γίνεται σημείο) η μπάρα μπαίνει οριζόντια κάτω από το μοντέλο. */
-const MIN_TRACK = 110;
-
 interface Props {
   theme: Theme;
   dimsMode: DimsMode;
-  showHidden: boolean;
-  colorMode: boolean;
 }
 
-export function TpView({ theme, dimsMode, showHidden, colorMode }: Props) {
+export function TpView({ theme, dimsMode }: Props) {
   const [show, setShow] = useState<Show>('both');
   const showRef = useRef(show);
   showRef.current = show;
@@ -124,7 +118,6 @@ export function TpView({ theme, dimsMode, showHidden, colorMode }: Props) {
   const viewerRef = useRef<ViewerApi>(null);
   const handT = useRef<HTMLDivElement>(null);
   const handP = useRef<HTMLDivElement>(null);
-  const track = useRef<HTMLDivElement>(null);
   const projectRef = useRef<Project | null>(null);
   const dragRef = useRef<Drag | null>(null);
   // το κομμάτι που κινείται (σέρνεται ή επιστρέφει στη θέση του)· μένει και μετά το άφημα του ποντικιού
@@ -271,12 +264,20 @@ export function TpView({ theme, dimsMode, showHidden, colorMode }: Props) {
     const ey = project([at[0], at[1] + 1, at[2]]);
     const exx = ex[0] - o[0], exy = ex[1] - o[1], eyx = ey[0] - o[0], eyy = ey[1] - o[1];
     const det = exx * eyy - exy * eyx;
-    // όψεις «από το πλάι» (το επίπεδο φαίνεται ως γραμμή): το χεράκι δεν έχει νόημα, κρύβεται
-    if (Math.abs(det) < 0.6) {
+    // Οι δύο μέγιστες κλίμακες του επιπέδου στην οθόνη (singular values): σ1 = μεγαλύτερη, σ2 = μικρότερη.
+    // Από το πλάι το επίπεδο συμπιέζεται σε μία κατεύθυνση (σ2 → 0)· πριν, το μέγεθος του χεριού υπολογιζόταν από την
+    // ορίζουσα (σ1·σ2) και «φούσκωνε» στην άλλη κατεύθυνση, κάνοντας το χέρι πλατύ και παραμορφωμένο.
+    const sumSq = exx * exx + exy * exy + eyx * eyx + eyy * eyy;
+    const sigma1 = Math.sqrt((sumSq + Math.sqrt(Math.max(0, sumSq * sumSq - 4 * det * det))) / 2);
+    const ratio = sigma1 > 0 ? Math.abs(det) / (sigma1 * sigma1) : 0; // σ2/σ1: 1 = από πάνω, 0 = από το πλάι
+    // όψεις σχεδόν «από το πλάι»: το χεράκι ξεθωριάζει και κρύβεται (δεν έχει νόημα πάνω σε επίπεδο που φαίνεται ως γραμμή)
+    const visible = Math.min(1, Math.max(0, (ratio - 0.2) / 0.15));
+    if (visible <= 0) {
       el.style.visibility = 'hidden';
       return;
     }
-    const pxPerMm = Math.sqrt(Math.abs(det));
+    el.style.opacity = String(visible);
+    const pxPerMm = sigma1;
     const s = Math.max(HAND_MM, MIN_HAND_PX / pxPerMm) / ICON; // mm ανά μονάδα εικονιδίου
     const matrix = (z: number) => {
       const p = project([at[0], at[1], z]);
@@ -293,7 +294,7 @@ export function TpView({ theme, dimsMode, showHidden, colorMode }: Props) {
     el.style.visibility = 'visible';
   };
 
-  const onFrame = (project: Project, size: { width: number; height: number }) => {
+  const onFrame = (project: Project) => {
     projectRef.current = project;
     const flying = flyRef.current;
     // τα δάχτυλα του Τ δείχνουν προς το Π, του Π προς το Τ· στο σύρσιμο το χέρι ακολουθεί το κομμάτι
@@ -305,53 +306,6 @@ export function TpView({ theme, dimsMode, showHidden, colorMode }: Props) {
     };
     handAt('T', anchorT, 1);
     handAt('P', anchorP, -1);
-
-    const el = track.current;
-    if (!el) return;
-    const { min, max } = part.bbox;
-    const center = project([(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2]);
-    // Από τις τέσσερις μεγάλες ακμές (κατά μήκος του X), εκείνη που φαίνεται πιο δεξιά και ψηλά.
-    let best: [[number, number], [number, number]] | null = null;
-    let bestScore = -Infinity;
-    for (const y of [min[1], max[1]])
-      for (const z of [min[2], max[2]]) {
-        const a = project([min[0], y, z]);
-        const b = project([max[0], y, z]);
-        const score = (a[0] + b[0]) / 2 - 0.5 * ((a[1] + b[1]) / 2);
-        if (score > bestScore) {
-          bestScore = score;
-          best = [a, b];
-        }
-      }
-    let [a, b] = best!;
-    if (b[0] < a[0]) [a, b] = [b, a]; // πάντα από αριστερά προς τα δεξιά: 0 % → 100 %
-    let dx = b[0] - a[0];
-    let dy = b[1] - a[1];
-    let len = Math.hypot(dx, dy);
-    let x0: number, y0: number;
-    if (len >= MIN_TRACK) {
-      // κάθετα στην ακμή, προς τα έξω από το μοντέλο
-      let nx = -dy / len, ny = dx / len;
-      if (nx * ((a[0] + b[0]) / 2 - center[0]) + ny * ((a[1] + b[1]) / 2 - center[1]) < 0) [nx, ny] = [-nx, -ny];
-      x0 = a[0] + nx * TRACK_OFFSET;
-      y0 = a[1] + ny * TRACK_OFFSET;
-    } else {
-      let bottom = -Infinity;
-      for (const x of [min[0], max[0]])
-        for (const y of [min[1], max[1]]) for (const z of [min[2], max[2]]) bottom = Math.max(bottom, project([x, y, z])[1]);
-      len = Math.min(280, size.width - 40);
-      dx = len;
-      dy = 0;
-      x0 = center[0] - len / 2;
-      y0 = Math.min(bottom + TRACK_OFFSET, size.height - TRACK_HEIGHT);
-    }
-    el.style.left = `${x0}px`;
-    el.style.top = `${y0 - TRACK_HEIGHT / 2}px`;
-    el.style.width = `${len}px`;
-    const ang = Math.atan2(dy, dx);
-    el.style.transform = `rotate(${ang}rad)`;
-    el.style.setProperty('--ang', `${ang}rad`);
-    el.style.visibility = 'visible';
   };
 
   // Μετατροπή μετατόπισης οθόνης (px) σε μετατόπιση στο επίπεδο XY της επάνω επιφάνειας.
@@ -501,39 +455,6 @@ export function TpView({ theme, dimsMode, showHidden, colorMode }: Props) {
     <>
       {handsOn && show !== 'P' && hand('T', 'Τ', handT)}
       {handsOn && show !== 'T' && hand('P', 'Π', handP)}
-      <div ref={track} className="tp-track">
-        <span className="tp-track-label">
-          {name} <strong>{percent}%</strong>
-        </span>
-        <input
-          type="range"
-          min={0}
-          max={100}
-          step={1}
-          value={percent}
-          aria-label={show === 'both' ? 'Κοπή και συναρμογή του Τ και του Π' : `Κοπή: από ορθογώνιο σε ${name}`}
-          aria-valuetext={`${percent}%`}
-          onPointerDown={() => {
-            setScrubbing(true);
-            setPlaying(false);
-          }}
-          onChange={(e) => {
-            jump({ [show]: Number(e.target.value) / 100 });
-            wake();
-          }}
-        />
-        <button
-          type="button"
-          className="tp-play"
-          aria-label={playing ? 'Παύση' : 'Παίξε το animation'}
-          title={playing ? 'Παύση' : 'Παίξε το animation'}
-          onClick={togglePlay}
-        >
-          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="currentColor">
-            {playing ? <path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z" /> : <path d="M8 5.5v13l11-6.5z" />}
-          </svg>
-        </button>
-      </div>
     </>
   );
 
@@ -547,8 +468,8 @@ export function TpView({ theme, dimsMode, showHidden, colorMode }: Props) {
           dimsMode={labels && !scrubbing && !running ? dimsMode : 'none'}
           dimStyle={COMPACT_STYLE}
           clipBox={clipBox}
-          showHidden={showHidden}
-          colorMode={colorMode}
+          showHidden={false} // οι διακεκομμένες γραμμές δεν εφαρμόζονται στο Τ+Π
+          colorMode={false} // τα χρώματα όψεων του 3D δεν εφαρμόζονται στο Τ+Π
           theme={theme}
           shape={{ key: `tp-${show}`, index: ORDER[show] }}
           onViewChange={setView}
@@ -567,30 +488,48 @@ export function TpView({ theme, dimsMode, showHidden, colorMode }: Props) {
                 : null
           }
         />
-        <div className="chip chip-view" aria-live="polite">
-          Όψη: <strong>{viewLabel(view)}</strong>
+        <div className="tp-topbar">
+          <div className="chip chip-view" aria-live="polite">
+            Όψη: <strong>{viewLabel(view)}</strong>
+          </div>
+        <div className="tp-track">
+          <span className="tp-track-label">
+            <strong>{percent}%</strong>
+          </span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={1}
+            value={percent}
+            aria-label={show === 'both' ? 'Κοπή και συναρμογή του Τ και του Π' : `Κοπή: από ορθογώνιο σε ${name}`}
+            aria-valuetext={`${percent}%`}
+            onPointerDown={() => {
+              setScrubbing(true);
+              setPlaying(false);
+            }}
+            onChange={(e) => {
+              jump({ [show]: Number(e.target.value) / 100 });
+              wake();
+            }}
+          />
+          <button
+            type="button"
+            className="tp-play"
+            aria-label={playing ? 'Παύση' : 'Παίξε το animation'}
+            title={playing ? 'Παύση' : 'Παίξε το animation'}
+            onClick={togglePlay}
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="currentColor">
+              {playing ? <path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z" /> : <path d="M8 5.5v13l11-6.5z" />}
+            </svg>
+          </button>
         </div>
+        </div>
+        <CornerTools onIso={() => viewerRef.current?.goTo('iso')}>
+          <LabelsButton mode={labels ? 'all' : 'none'} onClick={() => setLabels((v) => !v)} />
+        </CornerTools>
       </div>
-      <nav className="view-toolbar" aria-label="Όψη και ετικέτες">
-        <button
-          type="button"
-          className="view-button"
-          aria-pressed={view === 'iso'}
-          onClick={() => viewerRef.current?.goTo('iso')}
-          title="Ισομετρική όψη, προσαρμοσμένη να χωράει στην οθόνη"
-        >
-          Ισομετρική
-        </button>
-        <button
-          type="button"
-          className="view-button"
-          aria-pressed={labels}
-          onClick={() => setLabels((v) => !v)}
-          title={labels ? 'Κρύψε τις ετικέτες διαστάσεων' : 'Δείξε τις ετικέτες διαστάσεων'}
-        >
-          Ετικέτες διαστάσεων
-        </button>
-      </nav>
     </div>
   );
 }
