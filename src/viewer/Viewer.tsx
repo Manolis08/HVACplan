@@ -79,6 +79,8 @@ interface ViewerProps {
   floating?: FloatingPiece | null;
   /** Χωρίς το γλίστρημα όταν αλλάζει σχήμα: το νέο μπαίνει αμέσως (η καρτέλα κάνει δική της μετάβαση). */
   noSlide?: boolean;
+  /** Μικρό περιθώριο στην αρχική όψη (π.χ. Τ+Π): το σχήμα γεμίζει περισσότερο την οθόνη. */
+  tightFit?: boolean;
   /** Το κανονικό σχήμα (και οι διαστάσεις του) κρυμμένο, π.χ. όσο διαρκεί μια δική μας μετάβαση. */
   hidePart?: boolean;
   /** Κομμάτι με μεταβλητή διαφάνεια (0…1 από το opacityRef), που σβήνει ή εμφανίζεται. */
@@ -835,6 +837,7 @@ interface ControllerProps {
   dimsMode: DimsMode;
   /** διακεκομμένες γραμμές ενεργές: δεν χρειάζονται οι γραμμές στις κρυμμένες κορυφές των διαστάσεων */
   showHidden: boolean;
+  tightFit: boolean;
   dimStyle?: DimStyle;
   clipBox?: BBox;
   apiRef: RefObject<SceneApi | null>;
@@ -845,7 +848,7 @@ interface ControllerProps {
   onFrameRef: RefObject<ViewerProps['onFrame']>;
 }
 
-function SceneController({ part, scale, dimsMode, showHidden, dimStyle, clipBox, apiRef, slidingRef, overlayRef, focusRef, onViewChange, onFrameRef }: ControllerProps) {
+function SceneController({ part, scale, dimsMode, showHidden, tightFit, dimStyle, clipBox, apiRef, slidingRef, overlayRef, focusRef, onViewChange, onFrameRef }: ControllerProps) {
   const camera = useThree((s) => s.camera) as OrthographicCamera;
   const gl = useThree((s) => s.gl);
   // Ο έλεγχος κάμερας (makeDefault) μπαίνει στο store μετά την πρώτη απόδοση.
@@ -894,7 +897,7 @@ function SceneController({ part, scale, dimsMode, showHidden, dimStyle, clipBox,
       center.z,
       animate,
     );
-    const margin = fitMargin(size.width, size.height, dimsMode);
+    const margin = tightFit ? 24 : fitMargin(size.width, size.height, dimsMode);
     void c.zoomTo(fitZoom(d, part.bbox, size.width, size.height, margin), animate);
   };
 
@@ -1016,7 +1019,7 @@ function SceneController({ part, scale, dimsMode, showHidden, dimStyle, clipBox,
   useEffect(() => {
     state.current.lastSvg = '\u0000'; // αναγκαστικός επανυπολογισμός διαστάσεων
     invalidate();
-  }, [scale, dimsMode, showHidden, dimStyle, part, invalidate]);
+  }, [scale, dimsMode, showHidden, tightFit, dimStyle, part, invalidate]);
 
   // Σχεδίαση μόνο όταν χρειάζεται: όταν η σελίδα ξαναγίνεται ορατή (επιστροφή από άλλη
   // εφαρμογή/καρτέλα), ζητάμε νέο καρέ, γιατί ο browser μπορεί να έχει καθαρίσει τον καμβά.
@@ -1141,7 +1144,7 @@ function SceneController({ part, scale, dimsMode, showHidden, dimStyle, clipBox,
   );
 }
 
-export function Viewer({ part, scale, dimsMode, dimStyle, clipBox, showHidden, colorMode, focusDim, theme, shape, onViewChange, onFrame, overlay, floating, metal = false, noSlide = false, hidePart = false, ghost, scene, ref }: ViewerProps) {
+export function Viewer({ part, scale, dimsMode, dimStyle, clipBox, showHidden, colorMode, focusDim, theme, shape, onViewChange, onFrame, overlay, floating, metal = false, noSlide = false, tightFit = false, hidePart = false, ghost, scene, ref }: ViewerProps) {
   const onFrameRef = useRef(onFrame);
   onFrameRef.current = onFrame;
   const apiRef = useRef<SceneApi | null>(null);
@@ -1189,6 +1192,7 @@ export function Viewer({ part, scale, dimsMode, dimStyle, clipBox, showHidden, c
           part={part}
           scale={scale}
           dimsMode={dimsMode}
+          tightFit={tightFit}
           showHidden={showHidden}
           dimStyle={dimStyle}
           clipBox={clipBox}

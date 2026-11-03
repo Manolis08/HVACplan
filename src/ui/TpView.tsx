@@ -469,6 +469,7 @@ export function TpView({ theme, dimsMode }: Props) {
           dimStyle={COMPACT_STYLE}
           clipBox={clipBox}
           showHidden={false} // οι διακεκομμένες γραμμές δεν εφαρμόζονται στο Τ+Π
+          tightFit
           colorMode={false} // τα χρώματα όψεων του 3D δεν εφαρμόζονται στο Τ+Π
           theme={theme}
           shape={{ key: `tp-${show}`, index: ORDER[show] }}
