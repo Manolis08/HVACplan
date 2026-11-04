@@ -1088,7 +1088,7 @@ function SceneController({ part, scale, dimsMode, showHidden, tightFit, dimStyle
       edges: part.edges,
       triangles: part.triangles,
       hiddenLinesShown: showHidden,
-      cornerGhosts: shown === null, // μόνο στην ελεύθερη περιστροφή
+      cornerGhosts: shown === null || shown === 'iso', // ελεύθερη περιστροφή και ισομετρική (στις κύριες όψεις οι κρυμμένες γωνίες δεν έχουν νόημα)
     });
     if (svg !== s.lastSvg && overlayRef.current) {
       const g = overlayRef.current;
