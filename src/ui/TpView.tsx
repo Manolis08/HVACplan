@@ -6,7 +6,7 @@ import { scheduleFor } from '../model/tpProcess';
 import { atHome, createDrag, nearHome, stepDrag, type DragBody } from '../model/tpDrag';
 import type { BBox, Vec3 } from '../model/types';
 import type { DimsMode } from '../viewer/dimLayout';
-import { COMPACT_STYLE } from '../viewer/dimLayout';
+import { EDGE_STYLE } from '../viewer/dimLayout';
 import { CornerTools } from './CornerTools';
 import { LabelsButton } from './LabelsButton';
 import { Viewer, type FloatPose, type Project, type ViewerApi } from '../viewer/Viewer';
@@ -54,7 +54,7 @@ const other = (id: Piece): Piece => (id === 'T' ? 'P' : 'T');
 
 /** Σημείο λαβής (κέντρο του χεριού) κάθε κομματιού, στη θέση του μέσα στο σύνολο (πρόοδος pBoth). */
 function anchorOf(id: Piece, pBoth: number): Vec3 {
-  const x = pieceOffset(id, pBoth) + (id === 'T' ? LA / 2 - 3 : (TL + LB) / 2); // το Τ λίγο πίσω από το 56
+  const x = pieceOffset(id, pBoth) + (id === 'T' ? LA / 2 - 3 : (TL + LB) / 2); // το Τ λίγο πίσω από το μήκος του
   return [x, W / 2, T];
 }
 
@@ -466,7 +466,7 @@ export function TpView({ theme, dimsMode }: Props) {
           part={part}
           scale={ONE_TO_ONE}
           dimsMode={labels && !scrubbing && !running ? dimsMode : 'none'}
-          dimStyle={COMPACT_STYLE}
+          dimStyle={EDGE_STYLE}
           clipBox={clipBox}
           showHidden={false} // οι διακεκομμένες γραμμές δεν εφαρμόζονται στο Τ+Π
           tightFit

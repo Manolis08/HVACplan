@@ -865,6 +865,7 @@ function SceneController({ part, scale, dimsMode, showHidden, tightFit, dimStyle
     lastSvg: '',
     initialised: false,
     labelMemory: new Map<string, number>(),
+    labelGlide: new Map<string, [number, number]>(),
     /** κομμάτι και λειτουργία διαστάσεων της τελευταίας εικόνας· αλλαγή τους παίζει την είσοδο των διαστάσεων */
     lastPart: null as Part | null,
     lastDims: null as DimsMode | null,
@@ -1083,6 +1084,7 @@ function SceneController({ part, scale, dimsMode, showHidden, tightFit, dimStyle
       scale,
       mode: dimsMode,
       memory: s.labelMemory,
+      glide: s.labelGlide,
       edges: part.edges,
       triangles: part.triangles,
       hiddenLinesShown: showHidden,

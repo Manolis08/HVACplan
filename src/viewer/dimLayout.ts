@@ -53,6 +53,8 @@ export interface DimLayoutInput {
    * όσο χωράει εκεί, ώστε να μην «τρεμοπαίζει» ανάμεσα σε εναλλακτικές θέσεις όταν κινείται η κάμερα.
    */
   memory?: Map<string, number>;
+  /** η μετατόπιση κάθε ετικέτας από τη φυσική της θέση στο προηγούμενο καρέ: «γλιστράει» αντί να πηδάει */
+  glide?: Map<string, P2>;
   /**
    * Ακμές του σχήματος (x1,y1,z1,x2,y2,z2,…). Αν δοθούν, μια γραμμή επέκτασης που θα ξεκινούσε στον αέρα
    * (το άκρο της διάστασης δεν πέφτει πάνω σε ακμή) ξεκινά από το πλησιέστερο σημείο του σχήματος στην
@@ -171,6 +173,9 @@ export const SCREEN_STYLE: DimStyle = { gap: 14, step: 22, extGap: 0, extOver: 6
 /** Πιο μαζεμένες διαστάσεις (π.χ. στο Τ+Π, όπου μετρά να φαίνονται καθαρά οι αριθμοί και όχι η απόσταση). */
 export const COMPACT_STYLE: DimStyle = { gap: 7, step: 13, extGap: 0, extOver: 3, arrowL: 7, arrowW: 2.4, labelOff: 4, minLen: 0.5, tight: true };
 
+/** Τ+Π: οι διαστάσεις πάνω στις ακμές του σχήματος (η γραμμή ακριβώς πάνω στην ακμή, η ετικέτα πάνω στη γραμμή). */
+export const EDGE_STYLE: DimStyle = { ...COMPACT_STYLE, gap: 0, extOver: 0, labelOff: 0 };
+
 /** Χαρτί: μονάδες σε mm (κείμενο 3,5 mm, γραμμές 0,25 mm). */
 export const PAPER_STYLE: DimStyle = {
   gap: 8,
@@ -283,7 +288,10 @@ function labelBox(l: LabelSpec, s: DimStyle) {
  * Αποφυγή επικαλύψεων: κάθε ετικέτα που πέφτει πάνω σε προηγούμενη μετακινείται κατά μήκος της
  * γραμμής της (±) ή λίγο προς τα έξω, στην πρώτη θέση που είναι ελεύθερη.
  */
-function resolveLabels(labels: LabelSpec[], s: DimStyle, memory?: Map<string, number>): LabelSpec[] {
+/** Πόσο από τον δρόμο προς τη νέα μετατόπιση κάνει μια ετικέτα σε κάθε καρέ. */
+const GLIDE = 0.35;
+
+function resolveLabels(labels: LabelSpec[], s: DimStyle, memory?: Map<string, number>, glide?: Map<string, P2>): LabelSpec[] {
   const size = fontSize(s);
   const pad = size * 0.15;
   const placed: ReturnType<typeof labelBox>[] = [];
@@ -309,11 +317,23 @@ function resolveLabels(labels: LabelSpec[], s: DimStyle, memory?: Map<string, nu
       add(mul(l.n, h), mul(l.u, -0.75 * w)),
     ];
     const at = (i: number) => ({ ...l, x: l.x + shifts[i][0], y: l.y + shifts[i][1] });
+    // μόνο η μετατόπιση από τη φυσική θέση (αποφυγή επικαλύψεων) γλιστράει· η ετικέτα ακολουθεί τη γραμμή της ακριβώς
+    const glided = (cand: LabelSpec): LabelSpec => {
+      if (!glide) return cand;
+      const prev = glide.get(key);
+      let ox = cand.x - l.x, oy = cand.y - l.y;
+      if (prev) {
+        ox = prev[0] + (ox - prev[0]) * GLIDE;
+        oy = prev[1] + (oy - prev[1]) * GLIDE;
+      }
+      glide.set(key, [ox, oy]);
+      return { ...cand, x: l.x + ox, y: l.y + oy };
+    };
     const take = (i: number) => {
       const cand = at(i);
       placed.push(labelBox(cand, s));
       memory?.set(key, i);
-      return cand;
+      return glided(cand);
     };
     const prev = memory?.get(key);
     if (prev !== undefined && prev > 0 && prev < shifts.length) {
@@ -326,7 +346,7 @@ function resolveLabels(labels: LabelSpec[], s: DimStyle, memory?: Map<string, nu
     for (let i = 0; i < shifts.length; i++) if (!hits(labelBox(at(i), s))) return take(i);
     memory?.delete(key);
     placed.push(labelBox(l, s));
-    return l;
+    return glided(l);
   });
 }
 
@@ -342,6 +362,8 @@ interface Placed {
   len: number;
   n: P2; // κάθετο στη γραμμή στην οθόνη, προς την πλευρά της μετατόπισης
   group: string;
+  /** ο άξονας του μοντέλου κατά μήκος του οποίου μετρά */
+  axis: number;
   /** Αρχές των γραμμών επέκτασης στην οθόνη (πάνω στο σχήμα). */
   EA: P2;
   EB: P2;
@@ -405,7 +427,7 @@ export function layoutDims(input: DimLayoutInput): string {
       };
       const [EA, EA3] = snap(dim.a, A);
       const [EB, EB3] = snap(dim.b, B);
-      placed.push({ dim, A, B, len, n, group: `${o.join(',')}|${axis}`, EA, EB, EA3, EB3 });
+      placed.push({ dim, A, B, len, n, group: `${o.join(',')}|${axis}`, axis, EA, EB, EA3, EB3 });
       break;
     }
   }
@@ -414,10 +436,23 @@ export function layoutDims(input: DimLayoutInput): string {
   const levels = new Map<Placed, number>();
   const groups = new Map<string, Placed[]>();
   for (const p of placed) groups.set(p.group, [...(groups.get(p.group) ?? []), p]);
+  // Η σειρά βγαίνει από τα 3D μεγέθη (όχι από το μήκος στην οθόνη, που για δύο ίσες διαστάσεις αλλάζει από καρέ
+  // σε καρέ και τις έκανε να ανεβοκατεβαίνουν). Κάθε διάσταση παίρνει το πρώτο επίπεδο όπου δεν επικαλύπτει
+  // άλλη κατά μήκος του άξονά της· διαστάσεις σε διαφορετικά σημεία (π.χ. δύο χωριστά κομμάτια) μένουν στο ίδιο.
+  const order = new Map(placed.map((p, i) => [p, i]));
   for (const list of groups.values()) {
+    const taken: [number, number][][] = [];
     list
-      .sort((a, b) => Number(a.dim.overall) - Number(b.dim.overall) || a.len - b.len)
-      .forEach((p, i) => levels.set(p, i));
+      .sort((a, b) => Number(a.dim.overall) - Number(b.dim.overall) || a.dim.value - b.dim.value || order.get(a)! - order.get(b)!)
+      .forEach((p) => {
+        const ax = p.axis;
+        const lo = Math.min(p.dim.a[ax], p.dim.b[ax]), hi = Math.max(p.dim.a[ax], p.dim.b[ax]);
+        const eps = (hi - lo) * 1e-3;
+        let level = 0;
+        while (taken[level]?.some(([l, h]) => lo < h - eps && hi > l + eps)) level++;
+        (taken[level] ??= []).push([lo, hi]);
+        levels.set(p, level);
+      });
   }
 
   // Σε όψεις κατά άξονα όλες οι διαστάσεις μπαίνουν έξω από το περίγραμμα (όπως στο σχέδιο).
@@ -546,6 +581,6 @@ export function layoutDims(input: DimLayoutInput): string {
     );
   }
 
-  const finalLabels = resolveLabels(labels, s, input.memory);
+  const finalLabels = resolveLabels(labels, s, input.memory, input.glide);
   return parts.join('').replace(/\u0001(\d+)\u0001/g, (_, i) => emitLabel(finalLabels[Number(i)], s));
 }

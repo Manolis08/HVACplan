@@ -5,23 +5,23 @@ import { buildP, buildT, buildTP, JOIN_START, machiningOf, pieceOffset, shiftPar
 const { W, T, LA, LB, TL, TW } = TP;
 
 describe('Τ+Π', () => {
-  it('Τ: από ορθογώνιο 56 × 55 × 8 σε Τ (σώμα 26 + γλώσσα 30 × 20)', () => {
+  it('Τ: από ορθογώνιο 78 × 55 × 8 σε Τ (σώμα 48 + γλώσσα 30 × 20)', () => {
     expect(signedVolume(buildT(0).triangles)).toBeCloseTo((LA + TL) * W * T, 3);
     expect(signedVolume(buildT(1).triangles)).toBeCloseTo(LA * W * T + TL * TW * T, 3);
   });
 
-  it('Π: από ορθογώνιο 52 × 55 × 8 σε Π (εγκοπή 30 × 20)', () => {
+  it('Π: από ορθογώνιο 78 × 55 × 8 σε Π (εγκοπή 30 × 20)', () => {
     expect(signedVolume(buildP(0).triangles)).toBeCloseTo(LB * W * T, 3);
     expect(signedVolume(buildP(1).triangles)).toBeCloseTo(LB * W * T - TL * TW * T, 3);
   });
 
-  it('μαζί: η γλώσσα γεμίζει την εγκοπή, 78 × 55 × 8, Τ 56, γλώσσα 30 × 20 στη μέση', () => {
+  it('μαζί: η γλώσσα γεμίζει την εγκοπή, 126 × 55 × 8, Τ 78, γλώσσα 30 × 20 στη μέση', () => {
     const p = buildTP();
     // το πλαίσιο κρατά χώρο για τα κομμάτια όταν είναι χωριστά, ώστε να μη κινείται η κάμερα
     expect(p.bbox).toEqual({ min: [-TP_APART / 2, 0, 0], max: [LA + LB + TP_APART / 2, W, T] });
     expect(signedVolume(p.triangles)).toBeCloseTo((LA + LB) * W * T, 3);
-    expect(p.dims.find((d) => d.id === 'L')?.value).toBe(78);
-    expect(p.dims.find((d) => d.id === 'TA')?.value).toBe(56);
+    expect(p.dims.find((d) => d.id === 'L')?.value).toBe(126);
+    expect(p.dims.find((d) => d.id === 'TA')?.value).toBe(78);
     expect(p.dims.find((d) => d.id === 'tl')?.value).toBe(30);
     expect(p.dims.find((d) => d.id === 'W')?.value).toBe(55);
     expect(TP.TY * 2 + TW).toBe(W); // στη μέση
@@ -53,8 +53,8 @@ describe('Τ+Π', () => {
   it('χωρισμένα (0%): κάθε κομμάτι έχει τις δικές του διαστάσεις', () => {
     const v = (p: ReturnType<typeof buildTP>, id: string) => p.dims.find((d) => d.id === id)?.value;
     const p0 = buildTP(0);
-    expect(v(p0, 'LT')).toBe(56);
-    expect(v(p0, 'LP')).toBe(52);
+    expect(v(p0, 'LT')).toBe(78);
+    expect(v(p0, 'LP')).toBe(78);
     expect(v(p0, 'WT')).toBe(55);
     expect(v(p0, 'HT')).toBe(8);
     expect(v(p0, 'WP')).toBe(55);
