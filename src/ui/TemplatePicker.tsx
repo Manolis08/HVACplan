@@ -12,6 +12,7 @@ const ICONS: Record<string, ReactNode> = {
       <circle cx="20" cy="12" r="3.5" />
     </>
   ),
+  'cradle-block': <path d="M3 27V22H5V8H10A5 5 0 0 0 20 8H25V22H37V29H32V27Z" />,
 };
 
 interface Props {

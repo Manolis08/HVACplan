@@ -2681,27 +2681,3 @@ body {
   border-color: var(--accent);
   background: var(--accent-weak);
 }
-
-/* ---------- Intro κατά το άνοιγμα (βλ. src/intro) ---------- */
-.intro {
-  position: fixed;
-  inset: 0;
-  z-index: 2000;
-  /* το «δάπεδο» στούντιο φαίνεται ήδη όσο φορτώνει */
-  background: radial-gradient(120% 100% at 50% 50%, #f9fbfb, #f2f3f6);
-  opacity: 1;
-  transition-property: opacity;
-  transition-timing-function: ease;
-  cursor: default;
-}
-
-.intro.leaving {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.intro-canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-}

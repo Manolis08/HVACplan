@@ -27,25 +27,8 @@ import { ColorsButton, DashedButton } from './ui/CornerToggles';
 import { LabelsButton } from './ui/LabelsButton';
 import { VIEWS, viewLabel, type ViewId } from './viewer/views';
 import { Icon } from './ui/Icon';
-import { wantIntro } from './intro/wantIntro';
 
-/**
- * Όταν παίζει το intro, η εφαρμογή ανοίγει πάντα στον ΚΥΒΟ με τις αρχικές του τιμές και όλες τις ετικέτες, όπως ακριβώς
- * τον δείχνει το φιλμ (αλλιώς το τέλος του φιλμ δεν θα ταίριαζε με την εφαρμογή). Τα υπόλοιπα σχήματα, η σειρά και τα ονόματά
- * τους, και το θέμα φόντου μένουν όπως τα όρισε ο χρήστης.
- */
-function openingState(s: ReturnType<typeof loadState>): ReturnType<typeof loadState> {
-  if (!wantIntro()) return s;
-  const cube = 'notched-cube';
-  const without = <T,>(rec: Record<string, T> | undefined) => {
-    const out = { ...rec };
-    delete out[cube];
-    return out;
-  };
-  return { ...s, templateId: cube, inputs: without(s.inputs), toggles: without(s.toggles), viewerScales: without(s.viewerScales), dimsMode: 'all' };
-}
-
-const saved = openingState(loadState());
+const saved = loadState();
 
 const initialInputs = () =>
   Object.fromEntries(TEMPLATES.map((t) => [t.id, { ...defaultInputs(t), ...saved.inputs?.[t.id] }]));
@@ -312,7 +295,9 @@ export default function App() {
 
   const fileMode = mode === 'file';
   const shapeKey = fileMode ? `file:${file?.raw.name ?? ''}` : template.id;
-  const viewerScale = viewerScales[shapeKey] ?? DEFAULT_SCALE;
+  // Κάποια σχήματα έχουν δική τους αρχική κλίμακα στο 3D (π.χ. ΥΠΟΔΟΧΕΑΣ 2:1): ισχύει ώσπου ο χρήστης να διαλέξει άλλη.
+  // Το φύλλο όψεων κρατά την προτεινόμενη κλίμακα που χωρά στο A3.
+  const viewerScale = viewerScales[shapeKey] ?? (fileMode ? undefined : template.defaultScale) ?? DEFAULT_SCALE;
   const sheetScale = sheetScales[shapeKey]?.scale ?? DEFAULT_SCALE;
   // Ο επιλογέας κλίμακας αλλάζει μόνο την προβολή που είναι ανοιχτή.
   const setScale = (s: Scale) =>

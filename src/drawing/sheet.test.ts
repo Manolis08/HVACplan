@@ -58,12 +58,12 @@ describe('φύλλο όψεων (ISO 129): κύβος με εγκοπή 30 × 20
     }
   });
 
-  it('περιστροφή κειμένου: οριζόντιες 0°, κάθετη δεξιά +90°', () => {
+  it('περιστροφή κειμένου: οριζόντιες 0°, κάθετες πάντα −90° (από κάτω προς τα πάνω)', () => {
     const d = dims(sheet({ kind: 'reduce', n: 1 }).svg);
     expect(d.L.angle).toBe(0);
     expect(d.nw.angle).toBe(0);
-    expect(d.H.angle).toBe(90); // ύψος στα δεξιά της πρόσοψης
-    expect(d.nt.angle).toBe(90);
+    expect(d.H.angle).toBe(-90); // ύψος στα δεξιά της πρόσοψης
+    expect(d.nt.angle).toBe(-90);
   });
 
   it('πινακίδιο με την κλίμακα· προειδοποίηση όταν δεν χωράει στο A3', () => {
@@ -93,7 +93,7 @@ describe('αριστερή κάθετη διάσταση: −90°', () => {
     expect(d.Hax.text).toBe('50');
     expect(d.Hax.angle).toBe(-90);
     expect(d.H.angle).toBe(-90);
-    expect(d.Ht.angle).toBe(90);
+    expect(d.Ht.angle).toBe(-90);
     expect(d.Db.text).toBe('Ø20');
     expect(d.R.text).toBe('R20');
   });

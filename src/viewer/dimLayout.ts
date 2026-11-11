@@ -256,8 +256,9 @@ function paperLabel(mid: P2, u: P2, n: P2, text: string, s: DimStyle): LabelSpec
   let at: P2;
   const off = s.labelOff + s.paper!.fontSize / 2;
   if (vertical) {
+    // πάντα από κάτω προς τα πάνω (διαβάζεται από τα δεξιά του φύλλου), σε όποια πλευρά κι αν είναι η γραμμή
     const left = n[0] < 0;
-    angle = left ? -90 : 90;
+    angle = -90;
     at = add(mid, [left ? -off : off, 0]);
   } else {
     // πλάγια ή οριζόντια: γωνία της γραμμής, ώστε το κείμενο να μη διαβάζεται ανάποδα

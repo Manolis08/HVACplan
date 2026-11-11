@@ -36,13 +36,6 @@ self.addEventListener('fetch', (event) => {
       // ζητούνται με Origin και η αρχική αποθήκευση χωρίς· αλλιώς δεν θα ταίριαζαν ποτέ.
       const cached = await cache.match(request, { ignoreSearch: true, ignoreVary: true });
       if (cached) return cached;
-      // Εικόνες του intro: δεν αποθηκεύονται από πριν (μία σειρά ανά διάταξη και φόντο), αλλά όποια
-      // φορτωθεί κρατιέται, ώστε το intro να παίζει και χωρίς internet.
-      if (url.pathname.includes('/intro/')) {
-        const response = await fetch(request);
-        if (response.ok) await cache.put(request, response.clone());
-        return response;
-      }
       if (request.mode === 'navigate') {
         // Άνοιγμα σελίδας: πρώτα το δίκτυο, αλλιώς η αποθηκευμένη αρχική σελίδα.
         try {

@@ -1,3 +1,5 @@
+import type { Scale } from '../lib/scale';
+
 // Σύστημα συντεταγμένων μοντέλου (όπως στο τεχνικό σχέδιο):
 // X = μήκος (δεξιά), Y = βάθος (προς τα πίσω), Z = ύψος (πάνω). Μονάδες: mm.
 export type Vec3 = [number, number, number];
@@ -110,5 +112,7 @@ export interface TemplateDef {
   /** Τιμές των κλειδωμένων πεδίων (π.χ. οπή στο κέντρο), από τις υπόλοιπες τιμές. */
   computed?: (v: Values, t: Toggles) => Partial<Values>;
   validate: (v: Values, t: Toggles) => Issue[];
+  /** Αρχική κλίμακα στο 3D, αν δεν είναι 1:1· ο χρήστης μπορεί να την αλλάξει. */
+  defaultScale?: Scale;
   build: (v: Values, t: Toggles) => Part;
 }

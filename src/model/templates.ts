@@ -1,5 +1,5 @@
 import { formatNumber as f } from '../lib/format';
-import { bearingSolid, boxUnion } from './geometry';
+import { bearingSolid, boxUnion, circlePolygon, extrudeProfile, type Pt2 } from './geometry';
 import type { DimSpec, Issue, Part, PartGeometry, TemplateDef, Vec3 } from './types';
 
 const PX: Vec3 = [1, 0, 0];
@@ -232,8 +232,146 @@ const steppedBlock: TemplateDef = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// 4. Υποδοχέας (βάση με πατούρα δεξιά, ορθοστάτης με ημικυκλικό αυλάκι, οπή στη βάση)
+// ---------------------------------------------------------------------------
+const GROOVE = 32;
+const HOLE = 48;
+
+const cradleBlock: TemplateDef = {
+  id: 'cradle-block',
+  name: 'ΥΠΟΔΟΧΕΑΣ',
+  defaultScale: { kind: 'enlarge', n: 2 },
+  description: 'Βάση με πατούρα στο δεξί άκρο, ορθοστάτης πίσω αριστερά με ημικυκλικό αυλάκι, κατακόρυφη οπή στη βάση.',
+  params: [
+    { key: 'La', label: 'Μήκος βάσης (χωρίς την πατούρα)', axis: 'X', defaultValue: 70 },
+    { key: 'Lf', label: 'Μήκος πατούρας (δεξιά)', axis: 'X', defaultValue: 12 },
+    { key: 'W', label: 'Βάθος', axis: 'Y', defaultValue: 50 },
+    { key: 'Hb', label: 'Πάχος βάσης', axis: 'Z', defaultValue: 10 },
+    { key: 'Hf', label: 'Ύψος στην πατούρα', axis: 'Z', defaultValue: 12 },
+    { key: 'Hp', label: 'Ύψος ορθοστάτη πάνω από τη βάση', axis: 'Z', defaultValue: 26 },
+    { key: 'Wp', label: 'Μήκος ορθοστάτη', axis: 'Y', defaultValue: 45 },
+    { key: 'Ws', label: 'Τοίχωμα δίπλα στο αυλάκι', axis: 'X', defaultValue: 6 },
+    { key: 'Dg', label: 'Διάμετρος αυλακιού Ø', defaultValue: 20 },
+    { key: 'Dh', label: 'Διάμετρος οπής Ø', defaultValue: 10 },
+    { key: 'xh', label: 'Οπή από τη δεξιά άκρη', axis: 'X', defaultValue: 25 },
+    { key: 'yh', label: 'Οπή από μπροστά', axis: 'Y', defaultValue: 25 },
+  ],
+  validate: ({ La, Lf, W, Hb, Hf, Hp, Wp, Ws, Dg, Dh, xh, yh }) => {
+    const out: Issue[] = [];
+    const Pw = 2 * Ws + Dg;
+    const hx = La + Lf - xh;
+    if (Hb >= Hf)
+      out.push(issue(['Hb', 'Hf'], `Το ύψος στην πατούρα (${f(Hf)}) πρέπει να είναι μεγαλύτερο από το πάχος της βάσης (${f(Hb)}).`));
+    if (Wp >= W)
+      out.push(issue(['Wp', 'W'], `Ο ορθοστάτης (${f(Wp)}) πρέπει να είναι κοντύτερος από το βάθος (${f(W)}).`));
+    if (Pw >= La)
+      out.push(issue(['Ws', 'Dg', 'La'], `Ο ορθοστάτης (πλάτος ${f(Pw)}) πρέπει να είναι στενότερος από τη βάση (${f(La)}).`));
+    if (Dg / 2 >= Hp)
+      out.push(issue(['Dg', 'Hp'], `Το αυλάκι (βάθος ${f(Dg / 2)}) πρέπει να είναι ρηχότερο από το ύψος του ορθοστάτη (${f(Hp)}).`));
+    if (hx - Dh / 2 <= Pw || hx + Dh / 2 >= La)
+      out.push(issue(['xh', 'Dh'], `Η οπή πρέπει να είναι ανάμεσα στον ορθοστάτη και την πατούρα: από τη δεξιά άκρη ${f(Lf + Dh / 2)} έως ${f(La + Lf - Pw - Dh / 2)}.`));
+    if (yh - Dh / 2 <= 0 || yh + Dh / 2 >= W)
+      out.push(issue(['yh', 'Dh', 'W'], `Η οπή πρέπει να είναι μέσα στο βάθος: από μπροστά ${f(Dh / 2)} έως ${f(W - Dh / 2)}.`));
+    return out;
+  },
+  build: ({ La, Lf, W, Hb, Hf, Hp, Wp, Ws, Dg, Dh, xh, yh }) => {
+    const L = La + Lf;
+    const Zb = Hf - Hb; // το κάτω μέρος της βάσης· η πατούρα κατεβαίνει ως το 0
+    const Pw = 2 * Ws + Dg;
+    const Ht = Hf + Hp;
+    const y0 = W - Wp; // ο ορθοστάτης πατά στην πίσω αριστερή γωνία
+    const xc = Ws + Dg / 2;
+    const hx = L - xh;
+    const hole = circlePolygon(hx, yh, Dh / 2, HOLE);
+
+    // Τρία κομμάτια βάσης που ακουμπούν ακριβώς (βάση με την οπή, πάνω και κάτω μέρος της πατούρας)·
+    // οι κοινές τους έδρες αφαιρούνται, ώστε να μένει μία κλειστή επιφάνεια.
+    const base = extrudeProfile({ outer: [[0, 0], [La, 0], [La, W], [0, W]], holes: [hole] }, Hb, (u, v, w) => [u, v, Zb + w]);
+    const upper = boxUnion([{ min: [La, 0, Zb], max: [L, W, Hf] }]);
+    const foot = boxUnion([{ min: [La, 0, 0], max: [L, W, Zb] }]);
+    const eps = 1e-6;
+    const inner = (t: Float32Array, i: number) => {
+      const xs = [t[i], t[i + 3], t[i + 6]];
+      const zs = [t[i + 2], t[i + 5], t[i + 8]];
+      const atLa = xs.every((x) => Math.abs(x - La) < eps) && zs.every((z) => z > Zb - eps);
+      const atZb = zs.every((z) => Math.abs(z - Zb) < eps) && xs.every((x) => x > La - eps);
+      return atLa || atZb;
+    };
+    const keep = (t: Float32Array) => {
+      const out: number[] = [];
+      for (let i = 0; i < t.length; i += 9) if (!inner(t, i)) out.push(...t.subarray(i, i + 9));
+      return out;
+    };
+
+    // Ορθοστάτης: προφίλ (x, z) με το ημικυκλικό αυλάκι, εξωθημένο κατά Y από πίσω προς τα μπροστά.
+    const arc: Pt2[] = Array.from({ length: GROOVE + 1 }, (_, i) => {
+      const t = (-Math.PI * i) / GROOVE;
+      return [xc + (Dg / 2) * Math.cos(t), Ht + (Dg / 2) * Math.sin(t)];
+    });
+    const profile: Pt2[] = [[0, Hf], [Pw, Hf], [Pw, Ht], ...arc, [0, Ht]];
+    const smooth = profile.map((_, i) => i > 3 && i < 3 + GROOVE);
+    const post = extrudeProfile({ outer: profile, holes: [], smooth }, Wp, (u, v, w) => [u, W - w, v]);
+
+    const triangles = new Float32Array([...keep(base.triangles), ...keep(upper.triangles), ...keep(foot.triangles), ...post.triangles]);
+
+    // Ακμές: μόνο οι πραγματικές. Ο ορθοστάτης είναι στο ίδιο επίπεδο με την αριστερή και την πίσω
+    // έδρα της βάσης, οπότε εκεί δεν υπάρχει ακμή ανάμεσά τους.
+    const edges: number[] = [];
+    const line = (a: Vec3, b: Vec3) => edges.push(...a, ...b);
+    const side: Pt2[] = [[0, Zb], [La, Zb], [La, 0], [L, 0], [L, Hf], [0, Hf]];
+    side.forEach(([x, z], i) => {
+      const [x2, z2] = side[(i + 1) % side.length];
+      line([x, 0, z], [x2, 0, z2]);
+      if (i === side.length - 2) line([Pw, W, Hf], [L, W, Hf]);
+      else if (i !== side.length - 1) line([x, W, z], [x2, W, z2]);
+      line([x, 0, z], [x, i === side.length - 1 ? y0 : W, z]);
+    });
+    line([0, W, Hf], [0, W, Zb]);
+    for (const [loop, z] of [[hole, Hf], [hole, Zb]] as const)
+      loop.forEach(([x, y], i) => {
+        const [x2, y2] = loop[(i + 1) % loop.length];
+        line([x, y, z], [x2, y2, z]);
+      });
+    profile.forEach(([x, z], i) => {
+      const [x2, z2] = profile[(i + 1) % profile.length];
+      line([x, y0, z], [x2, y0, z2]);
+      if (i !== 0) line([x, W, z], [x2, W, z2]);
+      if (i !== 0 && !smooth[i]) line([x, y0, z], [x, W, z]);
+    });
+
+    return part(
+      { triangles, edges: new Float32Array(edges), bbox: { min: [0, 0, 0], max: [L, W, Ht] } },
+      {
+        dims: [
+          linear('La', La, [0, 0, Zb], [La, 0, Zb], [NZ, NY]),
+          linear('Lf', Lf, [La, 0, 0], [L, 0, 0], [NZ, NY]),
+          linear('W', W, [L, 0, 0], [L, W, 0], [NZ, PX], true),
+          linear('Hf', Hf, [L, 0, 0], [L, 0, Hf], [PX, NY]),
+          linear('Hb', Hb, [0, 0, Zb], [0, 0, Hf], [NX, NY]),
+          linear('Hp', Hp, [Pw, W, Hf], [Pw, W, Ht], [PX, PY]),
+          linear('Wp', Wp, [0, y0, Ht], [0, W, Ht], [PZ, NX]),
+          linear('Ws', Ws, [0, W, Ht], [Ws, W, Ht], [PZ, PY]),
+          linear('Dg', Dg, [Ws, W, Ht], [Ws + Dg, W, Ht], [PZ, PY]),
+          linear('Ws2', Ws, [Ws + Dg, W, Ht], [Pw, W, Ht], [PZ, PY]),
+          { kind: 'diameter', id: 'Dh', value: Dh, center: [hx, yh, Hf], axis: PZ, overall: false },
+          linear('xh', xh, [hx, yh, Hf], [L, yh, Hf], [PZ, PY]),
+          linear('yh', yh, [hx, 0, Hf], [hx, yh, Hf], [PZ, PX]),
+        ],
+        circles: [{ center: [hx, yh, Zb], axis: PZ, radius: Dh / 2, length: Hb }],
+        info: [
+          { label: 'Συνολικό μήκος', value: L, unit: 'mm' },
+          { label: 'Συνολικό ύψος', value: Ht, unit: 'mm' },
+          { label: 'Πλάτος ορθοστάτη', value: Pw, unit: 'mm' },
+          { label: 'Βάθος αυλακιού', value: Dg / 2, unit: 'mm' },
+        ],
+      },
+    );
+  },
+};
+
 // Προεπιλεγμένη σειρά (ο χρήστης μπορεί να την αλλάξει με σύρσιμο).
-export const TEMPLATES: TemplateDef[] = [notchedCube, steppedBlock, bearingBlock];
+export const TEMPLATES: TemplateDef[] = [notchedCube, steppedBlock, bearingBlock, cradleBlock];
 
 export const templateById = (id: string): TemplateDef =>
   TEMPLATES.find((t) => t.id === id) ?? TEMPLATES[0];
