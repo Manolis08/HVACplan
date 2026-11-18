@@ -13,6 +13,12 @@ const ICONS: Record<string, ReactNode> = {
     </>
   ),
   'cradle-block': <path d="M3 27V22H5V8H10A5 5 0 0 0 20 8H25V22H37V29H32V27Z" />,
+  bunker: (
+    <>
+      <path d="M3 28V24L11 8H24L37 24V28Z" />
+      <path d="M10 19H13V15H10Z" />
+    </>
+  ),
 };
 
 interface Props {

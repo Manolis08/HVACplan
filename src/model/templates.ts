@@ -370,8 +370,121 @@ const cradleBlock: TemplateDef = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// 5. Οχυρωματικό έργο (βάση, κόλουρο πρίσμα με κεκλιμένες πλευρές, ορθογώνια σήραγγα από πλευρά σε πλευρά)
+// ---------------------------------------------------------------------------
+const bunker: TemplateDef = {
+  id: 'bunker',
+  name: 'ΟΧΥΡΩΜΑΤΙΚΟ ΕΡΓΟ',
+  description: 'Βάση με κόλουρο πρίσμα από πάνω (κεκλιμένες πλευρές αριστερά και δεξιά) και ορθογώνιο άνοιγμα που το διαπερνά.',
+  params: [
+    { key: 'L', label: 'Μήκος βάσης', axis: 'X', defaultValue: 47 },
+    { key: 'W', label: 'Βάθος', axis: 'Y', defaultValue: 24 },
+    { key: 'Hb', label: 'Πάχος βάσης', axis: 'Z', defaultValue: 5 },
+    { key: 'H', label: 'Ύψος πάνω από τη βάση', axis: 'Z', defaultValue: 20 },
+    { key: 'La', label: 'Οριζόντια προεξοχή αριστερής κλίσης', axis: 'X', defaultValue: 10 },
+    { key: 'Lt', label: 'Μήκος πάνω έδρας', axis: 'X', defaultValue: 20 },
+    { key: 'th', label: 'Ύψος ανοίγματος', axis: 'Z', defaultValue: 10 },
+    { key: 'tz', label: 'Άνοιγμα πάνω από τη βάση', axis: 'Z', defaultValue: 3 },
+    { key: 'tw', label: 'Πλάτος ανοίγματος', axis: 'Y', defaultValue: 10 },
+    { key: 'ty', label: 'Άνοιγμα από μπροστά', axis: 'Y', defaultValue: 7 },
+  ],
+  validate: ({ L, W, H, La, Lt, th, tz, tw, ty }) => {
+    const out: Issue[] = [];
+    if (La + Lt >= L)
+      out.push(issue(['La', 'Lt', 'L'], `Η προεξοχή αριστερά (${f(La)}) και η πάνω έδρα (${f(Lt)}) πρέπει μαζί να είναι μικρότερες από το μήκος (${f(L)}).`));
+    if (tz <= 0 || tz + th >= H)
+      out.push(issue(['tz', 'th', 'H'], `Το άνοιγμα πρέπει να είναι μέσα στο ύψος: από ${f(tz)} έως ${f(tz + th)}, με ύψος πάνω από τη βάση ${f(H)}.`));
+    if (ty <= 0 || ty + tw >= W)
+      out.push(issue(['ty', 'tw', 'W'], `Το άνοιγμα πρέπει να είναι μέσα στο βάθος: από ${f(ty)} έως ${f(ty + tw)}, με βάθος ${f(W)}.`));
+    return out;
+  },
+  build: ({ L, W, Hb, H, La, Lt, th, tz, tw, ty }) => {
+    const Rr = L - La - Lt; // οριζόντια προεξοχή δεξιάς κλίσης
+    const Ht = Hb + H;
+    const z1 = Hb + tz; // κάτω και πάνω πλευρά του ανοίγματος
+    const z2 = z1 + th;
+    const y1 = ty;
+    const y2 = ty + tw;
+    const xl = (z: number) => (La * (z - Hb)) / H; // αριστερή κλίση στο ύψος z
+    const xr = (z: number) => L - (Rr * (z - Hb)) / H; // δεξιά κλίση
+    const [a1, b1, a2, b2] = [xl(z1), xr(z1), xl(z2), xr(z2)];
+
+    // Τρεις ζώνες ύψους (κάτω: βάση + κομμάτι κλίσης, μέση: στο ύψος του ανοίγματος, πάνω) σε τρεις λωρίδες
+    // βάθους· η μεσαία ζώνη λείπει από τη μεσαία λωρίδα (το άνοιγμα). Οι κοινές έδρες αφαιρούνται.
+    const low: Pt2[] = [[0, 0], [L, 0], [L, Hb], [b1, z1], [a1, z1], [0, Hb]];
+    const mid: Pt2[] = [[a1, z1], [b1, z1], [b2, z2], [a2, z2]];
+    const top: Pt2[] = [[a2, z2], [b2, z2], [L - Rr, Ht], [La, Ht]];
+    const slab = (p: Pt2[], ya: number, yb: number) => extrudeProfile({ outer: p, holes: [] }, yb - ya, (u, v, w) => [u, yb - w, v]).triangles;
+    const pieces = [
+      ...[[0, y1], [y1, y2], [y2, W]].flatMap(([ya, yb]) => [slab(low, ya, yb), slab(top, ya, yb)]),
+      slab(mid, 0, y1),
+      slab(mid, y2, W),
+    ];
+    const eps = 1e-6;
+    const near = (v: number, t: number) => Math.abs(v - t) < eps;
+    const inner = (t: Float32Array, i: number) => {
+      const ys = [t[i + 1], t[i + 4], t[i + 7]];
+      const zs = [t[i + 2], t[i + 5], t[i + 8]];
+      const outsideOpening = (vals: number[], lo: number, hi: number) => vals.every((v) => v < lo + eps) || vals.every((v) => v > hi - eps);
+      // κάθετα επίπεδα y1, y2 έξω από το ύψος του ανοίγματος
+      for (const yp of [y1, y2]) if (ys.every((y) => near(y, yp)) && outsideOpening(zs, z1, z2)) return true;
+      // οριζόντια επίπεδα z1, z2 έξω από το πλάτος του ανοίγματος
+      for (const zp of [z1, z2]) if (zs.every((z) => near(z, zp)) && outsideOpening(ys, y1, y2)) return true;
+      return false;
+    };
+    const tris: number[] = [];
+    for (const p of pieces) for (let i = 0; i < p.length; i += 9) if (!inner(p, i)) tris.push(...p.subarray(i, i + 9));
+
+    // Ακμές: το περίγραμμα μπροστά και πίσω, οι διαμήκεις ακμές του, τα δύο στόμια και οι ακμές του ανοίγματος.
+    const edges: number[] = [];
+    const line = (a: Vec3, b: Vec3) => edges.push(...a, ...b);
+    const outline: Pt2[] = [[0, 0], [L, 0], [L, Hb], [L - Rr, Ht], [La, Ht], [0, Hb]];
+    outline.forEach(([x, z], i) => {
+      const [x2, z2] = outline[(i + 1) % outline.length];
+      line([x, 0, z], [x2, 0, z2]);
+      line([x, W, z], [x2, W, z2]);
+      line([x, 0, z], [x, W, z]);
+    });
+    for (const [xa, xb] of [[a1, a2], [b1, b2]]) {
+      line([xa, y1, z1], [xa, y2, z1]);
+      line([xb, y1, z2], [xb, y2, z2]);
+      line([xa, y1, z1], [xb, y1, z2]);
+      line([xa, y2, z1], [xb, y2, z2]);
+    }
+    for (const y of [y1, y2]) {
+      line([a1, y, z1], [b1, y, z1]);
+      line([a2, y, z2], [b2, y, z2]);
+    }
+
+    return part(
+      { triangles: new Float32Array(tris), edges: new Float32Array(edges), bbox: { min: [0, 0, 0], max: [L, W, Ht] } },
+      {
+        dims: [
+          linear('L', L, [0, 0, 0], [L, 0, 0], [NZ, NY], true),
+          linear('W', W, [0, 0, 0], [0, W, 0], [NZ, NX], true),
+          linear('Hb', Hb, [0, 0, 0], [0, 0, Hb], [NX, NY]),
+          linear('H', H, [0, 0, Hb], [0, 0, Ht], [NX, NY]),
+          linear('La', La, [0, W, Ht], [La, W, Ht], [PZ, PY]),
+          linear('Lt', Lt, [La, W, Ht], [La + Lt, W, Ht], [PZ, PY]),
+          linear('tz', tz, [L, y2, Hb], [L, y2, z1], [PX, PY]),
+          linear('th', th, [L, y2, z1], [L, y2, z2], [PX, PY]),
+          linear('ty', ty, [L, 0, Hb], [L, y1, Hb], [PX, NZ]),
+          linear('tw', tw, [L, y1, Hb], [L, y2, Hb], [PX, NZ]),
+        ],
+        circles: [],
+        info: [
+          { label: 'Οριζόντια προεξοχή δεξιάς κλίσης', value: Rr, unit: 'mm' },
+          { label: 'Συνολικό ύψος', value: Ht, unit: 'mm' },
+          { label: 'Μήκος ανοίγματος (κάτω)', value: b1 - a1, unit: 'mm' },
+        ],
+      },
+    );
+  },
+};
+
 // Προεπιλεγμένη σειρά (ο χρήστης μπορεί να την αλλάξει με σύρσιμο).
-export const TEMPLATES: TemplateDef[] = [notchedCube, steppedBlock, bearingBlock, cradleBlock];
+export const TEMPLATES: TemplateDef[] = [notchedCube, steppedBlock, bearingBlock, cradleBlock, bunker];
 
 export const templateById = (id: string): TemplateDef =>
   TEMPLATES.find((t) => t.id === id) ?? TEMPLATES[0];
